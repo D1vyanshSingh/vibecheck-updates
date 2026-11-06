@@ -99,14 +99,20 @@ export function TubesBackground({
         )}
       />
 
+      {/* Ambient violet depth — keeps the hero from reading as flat black. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(58%_58%_at_74%_46%,rgba(112,43,255,0.2)_0%,rgba(112,43,255,0.05)_45%,transparent_72%)]"
+      />
+
       {/* Readability scrims — keep type legible over the 3D. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,8,13,0.92)_0%,rgba(8,8,13,0.35)_28%,rgba(8,8,13,0.12)_55%,rgba(8,8,13,0.86)_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,8,13,0.9)_0%,rgba(8,8,13,0.3)_28%,rgba(8,8,13,0.1)_58%,rgba(8,8,13,0.88)_100%)]"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(8,8,13,0.94)_0%,rgba(8,8,13,0.72)_38%,rgba(8,8,13,0.04)_68%)]"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(8,8,13,0.92)_0%,rgba(8,8,13,0.6)_34%,rgba(8,8,13,0.02)_64%)]"
       />
 
       {children}

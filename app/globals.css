@@ -49,7 +49,9 @@
     font-feature-settings: "ss01" 1, "cv05" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden makes body a scroll container and breaks
+       anchor/fragment scrolling for every in-page link. */
+    overflow-x: clip;
   }
 
   ::selection {

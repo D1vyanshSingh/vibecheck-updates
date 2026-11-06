@@ -119,12 +119,18 @@ function DockItem({
         ref={ref as Ref<HTMLAnchorElement>}
         href={item.href}
         target={linkTarget}
-        onClick={() => {
+        onClick={(event) => {
           if (item.onSelect) item.onSelect();
-          if (isHashLink && item.id) {
-            // Keep the URL shareable without a full navigation.
-            history.replaceState(null, "", item.href);
-          }
+          if (!isHashLink || !item.href) return;
+
+          // Deterministic in-page scroll: fragment navigation alone is not
+          // reliable with a sticky header, so offset it explicitly.
+          const target = document.querySelector<HTMLElement>(item.href);
+          if (!target) return;
+          event.preventDefault();
+          const top = target.getBoundingClientRect().top + window.scrollY - 88;
+          window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+          history.replaceState(null, "", item.href);
         }}
       >
         {content}

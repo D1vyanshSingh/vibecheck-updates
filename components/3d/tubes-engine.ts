@@ -61,10 +61,10 @@ export function createTubesScene(
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x08080d);
-  scene.fog = new THREE.FogExp2(0x08080d, 0.036);
+  scene.fog = new THREE.FogExp2(0x08080d, 0.026);
 
   const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 120);
-  camera.position.set(0, 0, 24);
+  camera.position.set(0, 0, 21);
 
   const stage = new THREE.Group();
   scene.add(stage);
@@ -88,7 +88,7 @@ export function createTubesScene(
 
   for (let index = 0; index < density; index += 1) {
     const color = new THREE.Color(TUBE_COLORS[index % TUBE_COLORS.length]);
-    const radius = 0.28 + (index % 3) * 0.07;
+    const radius = 0.38 + (index % 3) * 0.1;
     const points = Array.from({ length: POINT_COUNT }, (_, pointIndex) =>
       new THREE.Vector3(
         Math.sin(index + pointIndex * 0.3) * 2,
@@ -102,7 +102,7 @@ export function createTubesScene(
     const material = new THREE.MeshStandardMaterial({
       color: 0x0a0616,
       emissive: color,
-      emissiveIntensity: 1.25,
+      emissiveIntensity: 1.6,
       roughness: 0.34,
       metalness: 0.18,
       transparent: true,
