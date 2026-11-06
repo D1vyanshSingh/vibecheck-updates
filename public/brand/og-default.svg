@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08080D"/>
+      <stop offset="1" stop-color="#11101A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.75" cy="0.7" r="0.7">
+      <stop offset="0" stop-color="#702BFF" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#702BFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C9B5FF"/>
+      <stop offset="1" stop-color="#702BFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <g stroke="#ffffff" stroke-opacity="0.05">
+    <path d="M0 120H1200M0 240H1200M0 360H1200M0 480H1200"/>
+    <path d="M120 0V630M360 0V630M600 0V630M840 0V630M1080 0V630"/>
+  </g>
+  <g transform="translate(90 84)">
+    <ellipse cx="34" cy="34" rx="30" ry="14" transform="rotate(-31 34 34)" stroke="#974FFF" stroke-opacity="0.7" stroke-width="1.8" fill="none"/>
+    <path d="M19 16 L34 54 L49 16" stroke="url(#s)" stroke-width="7" fill="none"/>
+    <path d="M54 6 C54.7 11 56 12.3 61 13 C56 13.7 54.7 15 54 20 C53.3 15 52 13.7 47 13 C52 12.3 53.3 11 54 6 Z" fill="#F5F3FF"/>
+    <text x="86" y="46" fill="#F5F3FF" font-family="Space Grotesk, sans-serif" font-size="40" letter-spacing="-2">VibeCheck.</text>
+  </g>
+  <text x="90" y="300" fill="#F5F3FF" font-family="Space Grotesk, sans-serif" font-size="78" letter-spacing="-3.5">Your AI builds fast.</text>
+  <text x="90" y="386" fill="#F5F3FF" font-family="Space Grotesk, sans-serif" font-size="78" letter-spacing="-3.5">We make sure it&#8217;s secure.</text>
+  <text x="92" y="452" fill="#A5A0B5" font-family="JetBrains Mono, monospace" font-size="19" letter-spacing="2">SECURE WHAT YOU BUILD.</text>
+  <text x="92" y="560" fill="#6C677D" font-family="JetBrains Mono, monospace" font-size="15" letter-spacing="4">SECURITY VERIFICATION INFRASTRUCTURE — PRIVATE DEVELOPMENT</text>
+</svg>
