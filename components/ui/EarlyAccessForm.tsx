@@ -4,12 +4,25 @@ import { useState } from "react";
 import { ArrowRight, LoaderCircle, Mail } from "lucide-react";
 import { cn } from "@/lib/cn";
 
+const NAME_MIN = 2;
+const NAME_MAX = 100;
+const DESCRIPTION_MAX = 2000;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 type State =
   | { kind: "idle" }
   | { kind: "submitting" }
   | { kind: "success" }
   | { kind: "notice"; message: string }
-  | { kind: "error"; message: string };
+  | { kind: "error" };
+
+type Fields = {
+  name: string;
+  email: string;
+  role: string;
+  message: string;
+  company: string;
+};
 
 const roles = [
   "Vibe coder",
@@ -22,6 +35,28 @@ const roles = [
   "Other",
 ];
 
+function validate(fields: Fields) {
+  const errors: Record<string, string> = {};
+  const name = fields.name.trim();
+  const email = fields.email.trim().toLowerCase();
+
+  if (name.length < NAME_MIN) {
+    errors.name = "Please add your name (at least 2 characters).";
+  } else if (name.length > NAME_MAX) {
+    errors.name = `Name must be ${NAME_MAX} characters or fewer.`;
+  }
+
+  if (!EMAIL.test(email)) {
+    errors.email = "Enter a valid email address.";
+  }
+
+  if (fields.message.trim().length > DESCRIPTION_MAX) {
+    errors.projectDescription = `Project description must be ${DESCRIPTION_MAX} characters or fewer.`;
+  }
+
+  return errors;
+}
+
 export function EarlyAccessForm({
   variant = "full",
   className,
@@ -32,22 +67,43 @@ export function EarlyAccessForm({
   idPrefix?: string;
 }) {
   const [state, setState] = useState<State>({ kind: "idle" });
-  const [fields, setFields] = useState({ name: "", email: "", role: "", message: "", company: "" });
+  const [fields, setFields] = useState<Fields>({
+    name: "",
+    email: "",
+    role: "",
+    message: "",
+    company: "",
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const update = (key: keyof typeof fields) => (
-    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
-  ) => {
-    setFields((current) => ({ ...current, [key]: event.target.value }));
-    setErrors((current) => ({ ...current, [key]: "" }));
-  };
+  const update =
+    (key: keyof Fields) =>
+    (
+      event: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >,
+    ) => {
+      const value = event.target.value;
+      setFields((current) => ({ ...current, [key]: value }));
+      setErrors((current) => {
+        if (!current[key] && !(key === "message" && current.projectDescription)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[key];
+        if (key === "message") delete next.projectDescription;
+        return next;
+      });
+    };
+
+  const busy = state.kind === "submitting";
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextErrors: Record<string, string> = {};
-    if (fields.name.trim().length < 2) nextErrors.name = "Please add your name.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(fields.email.trim()))
-      nextErrors.email = "Enter a valid email address.";
+    // Guard against a second submit while the first is in flight.
+    if (busy) return;
+
+    const nextErrors = validate(fields);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -57,14 +113,31 @@ export function EarlyAccessForm({
       const response = await fetch("/api/early-access", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(fields),
+        body: JSON.stringify({
+          name: fields.name.trim(),
+          email: fields.email.trim().toLowerCase(),
+          buildType: fields.role.trim(),
+          projectDescription: fields.message.trim(),
+          company: fields.company,
+        }),
       });
-      const data: { status?: string; message?: string } = await response
-        .json()
-        .catch(() => ({}));
 
+      const data: {
+        status?: string;
+        message?: string;
+        errors?: Record<string, string>;
+      } = await response.json().catch(() => ({}));
+
+      // Success is only claimed on an explicit ok from the server, which only
+      // responds after Supabase accepted the insert.
       if (response.ok && data.status === "ok") {
         setState({ kind: "success" });
+        return;
+      }
+
+      if (data.status === "invalid" && data.errors) {
+        setErrors(data.errors);
+        setState({ kind: "idle" });
         return;
       }
 
@@ -72,22 +145,14 @@ export function EarlyAccessForm({
         setState({
           kind: "notice",
           message:
-            "This form is not wired to a list yet, so nothing was stored. Until it is, email hello@vibecheck.dev and you will be added manually.",
+            "The early-access database is not configured for this environment, so nothing was stored. Email hello@vibecheck.dev and you will be added manually.",
         });
         return;
       }
 
-      setState({
-        kind: "error",
-        message:
-          data.message ??
-          "That did not go through. Please try again, or email hello@vibecheck.dev.",
-      });
+      setState({ kind: "error" });
     } catch {
-      setState({
-        kind: "error",
-        message: "Network error — nothing was submitted. Try again, or email hello@vibecheck.dev.",
-      });
+      setState({ kind: "error" });
     }
   };
 
@@ -100,7 +165,7 @@ export function EarlyAccessForm({
       >
         <p className="mono text-lavender">Request received</p>
         <p className="display-sub mt-4 text-fog">
-          You are on the list. We will write when there is something real to try.
+          You&apos;re on the list. We&apos;ll be in touch.
         </p>
         <p className="body-copy mt-3 text-[13.5px]">
           Early access is small and deliberate. Expect a direct reply from the
@@ -110,8 +175,6 @@ export function EarlyAccessForm({
     );
   }
 
-  const disabled = state.kind === "submitting";
-
   return (
     <form onSubmit={onSubmit} noValidate className={cn("panel p-6 sm:p-8", className)}>
       <div className="flex items-center justify-between gap-4">
@@ -120,7 +183,7 @@ export function EarlyAccessForm({
       </div>
 
       <div className={cn("mt-6 grid gap-4", variant === "full" && "sm:grid-cols-2")}>
-        <div className={cn(variant === "full" ? "sm:col-span-1" : "col-span-1")}>
+        <div>
           <label htmlFor={`${idPrefix}-name`} className="mono-sm block text-ash">
             Name
           </label>
@@ -128,6 +191,8 @@ export function EarlyAccessForm({
             id={`${idPrefix}-name`}
             name="name"
             autoComplete="name"
+            maxLength={NAME_MAX}
+            required
             value={fields.name}
             onChange={update("name")}
             aria-invalid={Boolean(errors.name)}
@@ -155,6 +220,7 @@ export function EarlyAccessForm({
             type="email"
             inputMode="email"
             autoComplete="email"
+            required
             value={fields.email}
             onChange={update("email")}
             aria-invalid={Boolean(errors.email)}
@@ -174,7 +240,7 @@ export function EarlyAccessForm({
 
         <div className={variant === "full" ? "sm:col-span-2" : ""}>
           <label htmlFor={`${idPrefix}-role`} className="mono-sm block text-ash">
-            How you build
+            Build type <span className="normal-case tracking-normal">(optional)</span>
           </label>
           <select
             id={`${idPrefix}-role`}
@@ -183,7 +249,7 @@ export function EarlyAccessForm({
             onChange={update("role")}
             className="mt-2 h-11 w-full appearance-none border border-hairline bg-[#0b0a11] px-3 font-sans text-[14px] text-fog outline-none transition-colors focus:border-lavender/60"
           >
-            <option value="">Select one (optional)</option>
+            <option value="">Select one</option>
             {roles.map((role) => (
               <option key={role} value={role}>
                 {role}
@@ -194,22 +260,41 @@ export function EarlyAccessForm({
 
         {variant === "full" && (
           <div className="sm:col-span-2">
-            <label htmlFor={`${idPrefix}-message`} className="mono-sm block text-ash">
-              What are you building? (optional)
-            </label>
+            <div className="flex items-baseline justify-between gap-4">
+              <label htmlFor={`${idPrefix}-message`} className="mono-sm block text-ash">
+                Project description{" "}
+                <span className="normal-case tracking-normal">(optional)</span>
+              </label>
+              <span className="mono-sm text-ash">
+                {fields.message.length}/{DESCRIPTION_MAX}
+              </span>
+            </div>
             <textarea
               id={`${idPrefix}-message`}
               name="message"
               rows={3}
+              maxLength={DESCRIPTION_MAX}
               value={fields.message}
               onChange={update("message")}
-              className="mt-2 w-full resize-y border border-hairline bg-[#0b0a11] px-3 py-2.5 font-sans text-[14px] text-fog outline-none transition-colors placeholder:text-[#4f4b5e] focus:border-lavender/60"
+              aria-invalid={Boolean(errors.projectDescription)}
+              aria-describedby={
+                errors.projectDescription ? `${idPrefix}-message-error` : undefined
+              }
+              className={cn(
+                "mt-2 w-full resize-y border border-hairline bg-[#0b0a11] px-3 py-2.5 font-sans text-[14px] text-fog outline-none transition-colors placeholder:text-[#4f4b5e] focus:border-lavender/60",
+                errors.projectDescription && "border-[#ff6b8a]/60",
+              )}
               placeholder="A sentence is plenty."
             />
+            {errors.projectDescription && (
+              <p id={`${idPrefix}-message-error`} className="mt-1.5 text-[11px] text-[#ff9bb0]">
+                {errors.projectDescription}
+              </p>
+            )}
           </div>
         )}
 
-        {/* Honeypot — hidden from people, available to bots. */}
+        {/* Honeypot — hidden from people and assistive tech, tempting to bots. */}
         <div className="hidden" aria-hidden="true">
           <label htmlFor={`${idPrefix}-company`}>Company</label>
           <input
@@ -223,8 +308,13 @@ export function EarlyAccessForm({
         </div>
       </div>
 
-      <button type="submit" disabled={disabled} className="btn btn-primary mt-6 w-full disabled:opacity-60">
-        {disabled ? (
+      <button
+        type="submit"
+        disabled={busy}
+        aria-busy={busy}
+        className="btn btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {busy ? (
           <>
             <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
             Sending
@@ -241,19 +331,12 @@ export function EarlyAccessForm({
         No marketing list. No third-party tracking. Replies come from a person.
       </p>
 
-      {(state.kind === "notice" || state.kind === "error") && (
+      {state.kind === "notice" && (
         <div
           role="alert"
-          className={cn(
-            "mt-5 border p-3.5",
-            state.kind === "notice"
-              ? "border-lavender/30 bg-lavender/[0.06]"
-              : "border-[#ff6b8a]/30 bg-[#ff6b8a]/[0.05]",
-          )}
+          className="mt-5 border border-lavender/30 bg-lavender/[0.06] p-3.5"
         >
-          <p className="mono-sm text-fog">
-            {state.kind === "notice" ? "Not connected yet" : "Submission failed"}
-          </p>
+          <p className="mono-sm text-fog">Not connected yet</p>
           <p className="body-copy mt-2 text-[12.5px]">{state.message}</p>
           <a
             href="mailto:hello@vibecheck.dev?subject=VibeCheck%20early%20access"
@@ -262,6 +345,27 @@ export function EarlyAccessForm({
             <Mail className="h-3.5 w-3.5" aria-hidden="true" />
             hello@vibecheck.dev
           </a>
+        </div>
+      )}
+
+      {state.kind === "error" && (
+        <div
+          role="alert"
+          className="mt-5 border border-[#ff6b8a]/30 bg-[#ff6b8a]/[0.05] p-3.5"
+        >
+          <p className="mono-sm text-fog">
+            We couldn&apos;t submit your request. Please try again.
+          </p>
+          <p className="body-copy mt-2 text-[12.5px]">
+            If it keeps failing, email{" "}
+            <a
+              href="mailto:hello@vibecheck.dev?subject=VibeCheck%20early%20access"
+              className="text-lavender hover:text-fog"
+            >
+              hello@vibecheck.dev
+            </a>{" "}
+            and you will be added manually.
+          </p>
         </div>
       )}
     </form>

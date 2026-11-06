@@ -13,6 +13,7 @@ interactions. No backend beyond one form endpoint.
 - Framer Motion (interface motion, reveal, dock)
 - GSAP + ScrollTrigger (hero split-wordmark choreography, lazy-loaded)
 - Three.js (hero tubes, dynamically imported, no CDN dependency)
+- Supabase (Postgres + insert-only RLS) for early-access requests
 - Lucide React (icons)
 
 ## Commands
@@ -73,16 +74,36 @@ the platform module explorer. Real anchors (work without JS), Framer spring
 magnification, tooltips on hover *and* focus, roving arrow-key support at the
 browser level via native tab order, and a touch-friendly grid below `md`.
 
-## Early-access form
+## Early-access form (Supabase)
 
-`POST /api/early-access` validates name/email, rate limits per IP, uses a
-honeypot, and forwards to `EARLY_ACCESS_WEBHOOK_URL` when that server-only
-variable is set. When it is not set, the route returns **503
-`not_configured`** and the UI says plainly that nothing was stored and offers
-`hello@vibecheck.dev`. It never fakes a successful signup.
+Flow: form -> `POST /api/early-access` -> `public.early_access_requests`.
 
-Copy `.env.example` to `.env.local` and set `EARLY_ACCESS_WEBHOOK_URL` to any
-endpoint accepting a JSON POST to make the form live.
+The route validates name (2-100), email format, optional build type (<= 80)
+and optional project description (<= 2000), lowercases and trims the email,
+rate limits per IP, checks a honeypot, and inserts with the anon key from
+**server-only** env vars. Success is returned only when Supabase reports no
+error for the insert; the UI then shows
+"You're on the list. We'll be in touch." Any database or network failure shows
+"We couldn't submit your request. Please try again." with an email fallback.
+A missing configuration returns 503 `not_configured` and stores nothing.
+
+Supabase client: `lib/supabase.ts` (server-only — never import it from a
+client component). This repo has no `src/` directory, so it follows the
+existing top-level `lib/` convention rather than `src/lib/`.
+
+### Setup
+
+1. Create a Supabase project.
+2. Run `supabase/early_access_requests.sql` in the SQL editor. It creates the
+table, its checks and an **insert-only** RLS policy — there is no SELECT
+policy, so the public key cannot read submissions.
+3. Copy `.env.example` to `.env.local` and set `SUPABASE_URL` and
+`SUPABASE_ANON_KEY` (Project Settings -> API). Keep both non-`NEXT_PUBLIC_`.
+4. For Vercel, add the same two keys as environment variables for Production,
+Preview and Development, then redeploy.
+
+Never use a service-role key in this app; the anon key plus insert-only RLS is
+the intended boundary. The submitted list is not exposed on the website.
 
 ## Honesty rules encoded in the site
 

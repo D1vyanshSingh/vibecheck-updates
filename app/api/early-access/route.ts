@@ -1,12 +1,28 @@
 import { NextResponse } from "next/server";
+import { EARLY_ACCESS_TABLE, getSupabaseServerClient } from "@/lib/supabase";
+
+/**
+ * POST /api/early-access
+ *
+ * Validates, normalises and inserts one early-access request into Supabase.
+ * Success is reported only when Supabase returns no error. Missing
+ * configuration and database failures are distinct, explicit states.
+ */
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NAME_MIN = 2;
+const NAME_MAX = 100;
+const EMAIL_MAX = 254;
+const BUILD_TYPE_MAX = 80;
+const DESCRIPTION_MAX = 2000;
 
 type Payload = {
   name?: unknown;
   email?: unknown;
   role?: unknown;
+  buildType?: unknown;
   message?: unknown;
+  projectDescription?: unknown;
   company?: unknown; // honeypot
 };
 
@@ -23,6 +39,9 @@ function rateLimited(key: string) {
   return entry.count > 5;
 }
 
+const asString = (value: unknown) =>
+  typeof value === "string" ? value : "";
+
 export async function POST(request: Request) {
   let payload: Payload;
 
@@ -35,84 +54,84 @@ export async function POST(request: Request) {
     );
   }
 
-  const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 120) : "";
-  const email = typeof payload.email === "string" ? payload.email.trim().slice(0, 200) : "";
-  const role = typeof payload.role === "string" ? payload.role.trim().slice(0, 80) : "";
-  const message =
-    typeof payload.message === "string" ? payload.message.trim().slice(0, 1200) : "";
-  const honeypot = typeof payload.company === "string" ? payload.company.trim() : "";
-
-  if (honeypot) {
-    // Silently accept bots without forwarding anything.
+  // Honeypot: real people never fill this. Accept silently, store nothing.
+  if (asString(payload.company).trim() !== "") {
     return NextResponse.json({ status: "ok" }, { status: 202 });
   }
 
-  if (!EMAIL.test(email)) {
-    return NextResponse.json(
-      { status: "invalid", message: "A valid email address is required." },
-      { status: 422 },
-    );
+  const name = asString(payload.name).trim();
+  const email = asString(payload.email).trim().toLowerCase();
+  const buildType = asString(payload.buildType ?? payload.role).trim();
+  const description = asString(
+    payload.projectDescription ?? payload.message,
+  ).trim();
+
+  const errors: Record<string, string> = {};
+
+  if (name.length < NAME_MIN) {
+    errors.name = "Please add your name (at least 2 characters).";
+  } else if (name.length > NAME_MAX) {
+    errors.name = `Name must be ${NAME_MAX} characters or fewer.`;
   }
 
-  if (name.length < 2) {
-    return NextResponse.json(
-      { status: "invalid", message: "Please include a name we can reply to." },
-      { status: 422 },
-    );
+  if (!EMAIL.test(email) || email.length > EMAIL_MAX) {
+    errors.email = "Enter a valid email address.";
   }
 
-  const key =
+  if (buildType.length > BUILD_TYPE_MAX) {
+    errors.buildType = `Keep this under ${BUILD_TYPE_MAX} characters.`;
+  }
+
+  if (description.length > DESCRIPTION_MAX) {
+    errors.projectDescription = `Project description must be ${DESCRIPTION_MAX} characters or fewer.`;
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return NextResponse.json({ status: "invalid", errors }, { status: 422 });
+  }
+
+  const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-  if (rateLimited(key)) {
+  if (rateLimited(ip)) {
     return NextResponse.json(
       { status: "rate_limited", message: "Too many attempts. Try again in a minute." },
       { status: 429 },
     );
   }
 
-  const endpoint = process.env.EARLY_ACCESS_WEBHOOK_URL;
+  const supabase = getSupabaseServerClient();
 
-  if (!endpoint) {
-    // Honest state: nothing is stored, so we never claim a successful signup.
+  if (!supabase) {
+    // No credentials in this environment: say so instead of pretending.
     return NextResponse.json(
       {
         status: "not_configured",
         message:
-          "The early-access list is not connected to a destination yet. Nothing was stored.",
+          "The early-access database is not configured for this environment. Nothing was stored.",
       },
       { status: 503 },
     );
   }
 
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name,
-        email,
-        role: role || null,
-        message: message || null,
-        source: "vibecheck-website",
-        submittedAt: new Date().toISOString(),
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+  // Column names match public.early_access_requests (see supabase/*.sql).
+  const { error } = await supabase.from(EARLY_ACCESS_TABLE).insert({
+    name,
+    email,
+    build_type: buildType || null,
+    project_description: description || null,
+    source: "vibecheck-website",
+  });
 
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          status: "upstream_error",
-          message: "The waitlist destination rejected the request.",
-        },
-        { status: 502 },
-      );
-    }
-  } catch {
+  if (error) {
+    // Server-side diagnostics only: never echo database detail to the client.
+    console.error("[early-access] insert failed", {
+      code: error.code,
+      message: error.message,
+    });
     return NextResponse.json(
       {
-        status: "upstream_error",
-        message: "Could not reach the waitlist destination.",
+        status: "db_error",
+        message: "We couldn't submit your request. Please try again.",
       },
       { status: 502 },
     );
