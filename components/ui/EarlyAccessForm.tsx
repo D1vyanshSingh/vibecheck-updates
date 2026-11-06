@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight, LoaderCircle, Mail } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -75,6 +75,9 @@ export function EarlyAccessForm({
     company: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // A ref, not state: two submits in the same tick would both read a stale
+  // `state.kind` and fire two requests.
+  const inFlight = useRef(false);
 
   const update =
     (key: keyof Fields) =>
@@ -101,12 +104,13 @@ export function EarlyAccessForm({
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Guard against a second submit while the first is in flight.
-    if (busy) return;
+    if (inFlight.current) return;
 
     const nextErrors = validate(fields);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    inFlight.current = true;
     setState({ kind: "submitting" });
 
     try {
@@ -153,6 +157,8 @@ export function EarlyAccessForm({
       setState({ kind: "error" });
     } catch {
       setState({ kind: "error" });
+    } finally {
+      inFlight.current = false;
     }
   };
 
