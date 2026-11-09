@@ -1,0 +1,10 @@
+# Keep the deployed bundle to the service and the engine it runs.
+tests/
+docs/
+out/
+__pycache__/
+**/__pycache__/
+*.pyc
+README.md
+PROJECT_REPORT.md
+vulnscan-cheatsheet.pdf

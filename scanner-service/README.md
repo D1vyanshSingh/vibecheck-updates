@@ -559,3 +559,45 @@ The ATT&CK techniques describe what the exposure would enable, not what was
 observed. The validation step is a description of a safe confirmation, not an
 action the scanner took: `--strict`, `--lab-exploits` and everything else in
 this tool remain non-destructive.
+
+---
+
+## Running the scan service
+
+The site calls this engine over HTTP when `SCANNER_URL` is set, which is how a
+deployed site scans: a serverless function has no Python process to spawn.
+
+```bash
+cd scanner-service
+SCAN_SECRET=devsecret PORT=8020 python3 main.py
+curl -s localhost:8020/health
+curl -s -X POST localhost:8020/scan \
+  -H 'content-type: application/json' \
+  -H 'x-scan-secret: devsecret' \
+  -d '{"host": "example.com", "port": 443}'
+```
+
+`POST /scan` returns `{"status": "ok", "report": {...}, "html": "..."}`. The
+branded HTML comes back inline because serverless instances share no disk.
+There is no PDF endpoint: rendering one needs a browser, so the site's report
+view offers **Print / save as PDF** instead.
+
+### Deploying it on Vercel
+
+The service is dependency-free, so it deploys as its own Vercel project from
+this repository:
+
+1. **Add New → Project**, pick this repo.
+2. **Root Directory**: `scanner-service`.
+3. Framework preset: **Other** (Vercel reads `pyproject.toml`).
+4. **Settings → Environment Variables**: `SCAN_SECRET` = a long random value
+   (`openssl rand -hex 32`). Do not reuse a password.
+5. Deploy, then confirm `https://<service>.vercel.app/health` returns
+   `{"status": "ok", ...}`.
+
+Then on the **site** project set `SCANNER_URL` to that deployment's URL and
+`SCAN_SECRET` to the same value, and redeploy. Leave `SCANNER_URL` unset for
+local development and the site spawns the bundled scanner instead.
+
+A scan of five ports finishes in a couple of seconds, but a slow host can take
+longer; keep the function's duration limit at 60s.

@@ -244,6 +244,26 @@ function FindingCard({ finding }: { finding: ScanFinding }) {
   );
 }
 
+/**
+ * Prints the branded HTML report through the browser, which is how a scan host
+ * without Chrome produces a PDF: the print dialog saves one.
+ */
+function printReport(html: string) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  frame.srcdoc = html;
+  frame.onload = () => {
+    const view = frame.contentWindow;
+    if (!view) return;
+    view.focus();
+    view.print();
+    window.setTimeout(() => frame.remove(), 60_000);
+  };
+  document.body.appendChild(frame);
+}
+
 function ReportView({
   result,
   onReset,
@@ -253,6 +273,20 @@ function ReportView({
 }) {
   const { report } = result;
   const [filter, setFilter] = useState<Severity | "all">("all");
+
+  // A remote scan host returns the report inline; serve it from memory.
+  const inlineHtmlUrl = useMemo(() => {
+    if (!result.html) return "";
+    return URL.createObjectURL(new Blob([result.html], { type: "text/html" }));
+  }, [result.html]);
+
+  useEffect(() => {
+    return () => {
+      if (inlineHtmlUrl) URL.revokeObjectURL(inlineHtmlUrl);
+    };
+  }, [inlineHtmlUrl]);
+
+  const htmlHref = result.htmlUrl || inlineHtmlUrl;
 
   const counts = report.summary.counts_by_severity;
   const criticalAndHigh = (counts.critical ?? 0) + (counts.high ?? 0);
@@ -331,25 +365,36 @@ function ReportView({
                 <Download className="h-3.5 w-3.5" aria-hidden="true" />
                 Download branded PDF
               </a>
+            ) : result.html ? (
+              <button
+                type="button"
+                onClick={() => printReport(result.html as string)}
+                className="btn btn-primary"
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                Print / save as PDF
+              </button>
             ) : null}
-            <a
-              href={result.htmlUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-outline"
-            >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              Open full report
-            </a>
+            {htmlHref ? (
+              <a
+                href={htmlHref}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-outline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                Open full report
+              </a>
+            ) : null}
             <button type="button" onClick={onReset} className="btn btn-quiet">
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               Scan another URL
             </button>
           </div>
-          {!result.pdfUrl && (
+          {!result.pdfUrl && result.html && (
             <p className="mono-sm mt-3 text-ash">
-              This machine could not render the PDF; the full HTML report is
-              still available.
+              This scan host has no browser to render a PDF, so the report is
+              printed instead — choose “Save as PDF” in the print dialog.
             </p>
           )}
         </div>

@@ -19,7 +19,7 @@ import type { ScanReport, ScanResult } from "@/lib/scan/types";
  * rendered from.
  */
 
-const SCANNER_DIR_NAME = "vulnscan-vibecheck-integrated-version";
+const SCANNER_DIR_NAME = "scanner-service";
 
 /** Configured path first, then the copy inside this app, then a sibling. */
 const SCANNER_DIR = (() => {
@@ -38,6 +38,12 @@ const SCANNER_DIR = (() => {
 })();
 
 const PYTHON = process.env.SCANNER_PYTHON ?? "python3";
+/**
+ * A deployed scan host has no Python process, so it points this at the scanner
+ * service instead (see scanner-service/). Unset means scan locally.
+ */
+const REMOTE_SCANNER = process.env.SCANNER_URL?.trim().replace(/\/$/, "") ?? "";
+const SCAN_SECRET = process.env.SCAN_SECRET ?? "";
 /**
  * By default any host that resolves is scannable, including loopback and
  * private (LAN) addresses: scans run from the operator's own machine and
@@ -258,11 +264,76 @@ async function isReadable(file: string): Promise<boolean> {
 }
 
 /**
+ * Scans through the scanner service. The service returns the branded HTML with
+ * the report because function instances share no disk to store it on.
+ */
+async function runRemoteScan(
+  target: Target,
+  id: string,
+): Promise<ScanResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS + 30_000);
+
+  try {
+    const response = await fetch(`${REMOTE_SCANNER}/scan`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-scan-secret": SCAN_SECRET,
+      },
+      body: JSON.stringify({
+        host: target.host,
+        port: target.port,
+        label: `URL scan — ${target.host}`,
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    const data = (await response.json().catch(() => null)) as
+      | { status: "ok"; report: ScanReport; html?: string }
+      | { status: "error"; message?: string }
+      | null;
+
+    if (!response.ok || !data || data.status !== "ok") {
+      const message =
+        data && "message" in data && data.message
+          ? data.message
+          : "The scan service returned an error.";
+      console.error("[scan] service error", response.status, message);
+      throw new ScanError(502, message);
+    }
+
+    return {
+      id,
+      target,
+      report: data.report,
+      pdfUrl: null,
+      htmlUrl: "",
+      html: data.html,
+    };
+  } catch (error) {
+    if (error instanceof ScanError) throw error;
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ScanError(504, "The scan service took too long and was stopped.");
+    }
+    console.error("[scan] service unreachable", error);
+    throw new ScanError(503, "The scan service could not be reached.");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Scans the host behind a URL and returns the report the PDF was built from.
  * Artifacts live in a per-scan temp directory named by the scan id.
  */
 export async function runUrlScan(rawUrl: string): Promise<ScanResult> {
   const target = await resolveTarget(rawUrl);
+
+  if (REMOTE_SCANNER) {
+    return runRemoteScan(target, randomUUID());
+  }
 
   if (!existsSync(path.join(SCANNER_DIR, "vulnscan", "__main__.py"))) {
     throw new ScanError(

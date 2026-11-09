@@ -1,0 +1,10 @@
+[project]
+name = "vibecheck-scanner-service"
+version = "0.1.0"
+description = "HTTP wrapper around the vulnscan engine used by the VibeCheck website."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.vercel]
+# Vercel's Python runtime loads this WSGI application.
+entrypoint = "main:application"

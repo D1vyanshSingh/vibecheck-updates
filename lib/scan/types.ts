@@ -91,6 +91,10 @@ export type ScanResult = {
   id: string;
   target: { url: string; host: string; port: number };
   report: ScanReport;
+  /** Present when the scan host rendered a PDF artifact. */
   pdfUrl: string | null;
+  /** Empty when the report only exists inline (a remote scan host). */
   htmlUrl: string;
+  /** Branded standalone report, returned inline by the scan service. */
+  html?: string;
 };
