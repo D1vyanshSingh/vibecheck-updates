@@ -1,0 +1,66 @@
+rules:
+  - id: vibecheck.no-eval
+    message: >-
+      eval() executes its argument as code. If any part of the value is
+      attacker-controlled this becomes remote code execution.
+    severity: ERROR
+    languages: [javascript, typescript, python]
+    pattern-either:
+      - pattern: eval(...)
+    metadata:
+      category: security
+      confidence: MEDIUM
+      remediation: Replace eval with an explicit parser or dispatch table.
+
+  - id: vibecheck.tls-verify-disabled
+    message: >-
+      Certificate verification is disabled, so the client will accept any
+      certificate presented on the network path.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: requests.$METHOD(..., verify=False, ...)
+      - pattern: httpx.$METHOD(..., verify=False, ...)
+    metadata:
+      category: security
+      confidence: HIGH
+      remediation: Re-enable verification and fix the trust chain.
+
+  - id: vibecheck.service-role-in-client
+    message: >-
+      A service-role key referenced through a NEXT_PUBLIC_ variable is bundled
+      into browser JavaScript, where anyone can read it.
+    severity: ERROR
+    languages: [javascript, typescript]
+    pattern-regex: NEXT_PUBLIC_[A-Z_]*SERVICE_ROLE
+    metadata:
+      category: security
+      confidence: HIGH
+      remediation: Read service-role keys only in server code.
+
+  - id: vibecheck.sql-string-concat
+    message: >-
+      SQL text appears to be built from interpolated values. Use parameterised
+      queries so values cannot change the statement.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: $CURSOR.execute(f"...", ...)
+      - pattern: $CURSOR.execute("..." + $X, ...)
+      - pattern: $CURSOR.execute("...%s..." % $X, ...)
+    metadata:
+      category: security
+      confidence: HIGH
+      remediation: Use bound parameters.
+
+  - id: vibecheck.jwt-no-verify
+    message: >-
+      JWT decoding without signature verification accepts forged tokens.
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: jwt.decode(..., options={"verify_signature": False}, ...)
+    metadata:
+      category: security
+      confidence: HIGH
+      remediation: Verify the signature against the issuer's published keys.

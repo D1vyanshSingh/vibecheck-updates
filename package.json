@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.119.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.4.0",
@@ -17,8 +18,10 @@
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^2.6.0",
-    "three": "^0.172.0"
+    "three": "^0.172.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
