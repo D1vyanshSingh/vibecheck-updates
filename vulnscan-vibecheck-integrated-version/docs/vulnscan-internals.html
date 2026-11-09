@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vulnscan — how it works</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm 16mm 14mm; }
+  :root {
+    --ink: #14181d;
+    --muted: #5b6673;
+    --faint: #8b96a3;
+    --rule: #dfe4ea;
+    --rule-soft: #eef1f5;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f1;
+    --code-bg: #11161c;
+    --code-ink: #e8eef5;
+    --tag: #7c3aed;
+    --warn: #b45309;
+    --warn-soft: #fdf6e7;
+    --crit: #9f1239;
+    --crit-soft: #fdeef2;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 9.9pt; line-height: 1.5;
+  }
+  code, pre, .mono { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+  /* cover */
+  .cover { padding: 4mm 0 6mm; border-bottom: 2px solid var(--ink); margin-bottom: 5mm; }
+  .eyebrow { font-size: 8pt; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 2.5mm; }
+  h1 { font-size: 26pt; line-height: 1.06; margin: 0 0 3.5mm; letter-spacing: -0.022em; font-weight: 800; }
+  .lede { font-size: 10.6pt; color: var(--muted); max-width: 148mm; margin: 0 0 4mm; }
+  .meta { display: flex; gap: 7mm; font-size: 8.4pt; color: var(--muted); flex-wrap: wrap; }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* structure */
+  h2 {
+    font-size: 13pt; margin: 7mm 0 2.6mm; letter-spacing: -0.01em;
+    padding-bottom: 1.4mm; border-bottom: 1px solid var(--rule);
+    break-after: avoid; page-break-after: avoid;
+  }
+  h2 .num { display: inline-block; min-width: 8mm; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 800; }
+  h3 { font-size: 10.2pt; margin: 4.4mm 0 1.4mm; break-after: avoid; page-break-after: avoid; }
+  h4 { font-size: 9.4pt; margin: 3mm 0 1mm; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; break-after: avoid; }
+  p { margin: 0 0 2.2mm; }
+  .note { color: var(--muted); font-size: 8.9pt; }
+  ul, ol { margin: 0 0 2.6mm; padding-left: 5mm; }
+  li { margin-bottom: 0.8mm; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 3mm 3.6mm; border-radius: 1.6mm; margin: 1.8mm 0 3.2mm;
+    font-size: 8.2pt; line-height: 1.48; overflow-wrap: anywhere; white-space: pre-wrap;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  pre .c { color: #8fa3b8; }
+  pre .k { color: #5eead4; }
+  pre .r { color: #fca5a5; }
+
+  p code, li code, td code, dd code {
+    background: var(--accent-soft); color: #0b4f4a;
+    padding: 0.3mm 1.2mm; border-radius: 0.9mm; font-size: 8.6pt;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 1.8mm 0 3.6mm; font-size: 8.5pt; }
+  th {
+    text-align: left; font-size: 7.6pt; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); border-bottom: 1.3px solid var(--ink); padding: 1.4mm 1.8mm;
+  }
+  td { padding: 1.4mm 1.8mm; border-bottom: 1px solid var(--rule-soft); vertical-align: top; line-height: 1.42; }
+  td:first-child { width: 30%; }
+  td:first-child code { background: none; padding: 0; color: var(--ink); font-weight: 600; font-size: 8.3pt; }
+  table.tight td:first-child { width: 21%; }
+  table.mid td:first-child { width: 24%; }
+  table.cat td:first-child { width: 26%; }
+  table.psvc td:first-child { width: 19%; }
+  table.psvc td:nth-child(2) { width: 12%; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+
+  .callout {
+    border-left: 2.5px solid var(--accent); background: #f6faf9;
+    padding: 2.4mm 3.2mm; margin: 1.8mm 0 3.4mm; font-size: 9pt;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .callout b { color: #0b4f4a; }
+  .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .callout.warn b { color: #7c2d12; }
+  .callout.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+  .callout.crit b { color: #7f1d3a; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  .kicker { font-size: 7.8pt; letter-spacing: .12em; text-transform: uppercase; color: var(--tag); font-weight: 700; }
+  .qa { border-top: 1px solid var(--rule); padding: 2mm 0 0; margin: 0 0 2.4mm; break-inside: avoid; }
+  .qa .q { font-weight: 600; }
+  .qa .a { color: #2b333d; }
+  .sit { border: 1px solid var(--rule); border-radius: 1.6mm; padding: 2.4mm 3mm; margin: 0 0 3mm; break-inside: avoid; }
+  .sit .t { font-weight: 700; font-size: 9.6pt; margin-bottom: 1mm; }
+  .pill { display: inline-block; font-size: 7.4pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+          padding: 0.4mm 1.6mm; border-radius: 2mm; background: var(--accent-soft); color: #0b4f4a; }
+  .pill.crit { background: var(--crit-soft); color: var(--crit); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .toc td:first-child { width: 8%; }
+  .toc td { border-bottom: 1px solid var(--rule-soft); }
+  footer { margin-top: 7mm; padding-top: 2.2mm; border-top: 1px solid var(--rule); font-size: 7.8pt; color: var(--muted); }
+  .pb { break-before: page; page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">vulnscan · internals handbook</div>
+  <h1>How vulnscan works</h1>
+  <p class="lede">A line-by-line explanation of every stage between a hostname and a client-ready report: how services are identified, how a finding earns its severity, where the CVSS number comes from, what the advisory database really stores, and which failures the design deliberately accepts. Written to be read with the code open beside it.</p>
+  <div class="meta">
+    <span><b>Version</b> &nbsp;0.1.0</span>
+    <span><b>Rule IDs</b> &nbsp;58</span>
+    <span><b>Tests</b> &nbsp;304</span>
+    <span><b>Runtime</b> &nbsp;Python 3.10+, standard library</span>
+    <span><b>Updated</b> &nbsp;6 November 2026</span>
+  </div>
+</div>
+
+<p class="note">Every number, flag and file reference in this document was read out of the code in this repository, not from memory. Where the behaviour is subtle or the reasoning matters more than the mechanics, there is a <b>Why</b> note — those are the parts worth arguing about in a review.</p>
+
+<h3>Contents</h3>
+<table class="toc"><tbody>
+<tr><td><b>01</b></td><td>What the tool is, and what it refuses to be</td></tr>
+<tr><td><b>02</b></td><td>The pipeline, end to end</td></tr>
+<tr><td><b>03</b></td><td>The data model: <code>PortService</code>, <code>Finding</code>, the report dict</td></tr>
+<tr><td><b>04</b></td><td>Identity: ports locate, protocols decide</td></tr>
+<tr><td><b>05</b></td><td>The two engines: nmap and native</td></tr>
+<tr><td><b>06</b></td><td>Evidence: what is actually said on the wire</td></tr>
+<tr><td><b>07</b></td><td>The rule catalogue (58 rules, grouped by what gates them)</td></tr>
+<tr><td><b>08</b></td><td>Severity, confidence and CVSS</td></tr>
+<tr><td><b>09</b></td><td>The offline advisory database</td></tr>
+<tr><td><b>10</b></td><td>Guidance: ATT&amp;CK, detection, next step</td></tr>
+<tr><td><b>11</b></td><td>The report: JSON, HTML, CSV, PDF</td></tr>
+<tr><td><b>12</b></td><td>The CLI surface and its exit codes</td></tr>
+<tr><td><b>13</b></td><td>Testing: how 304 tests keep the rules honest</td></tr>
+<tr><td><b>14</b></td><td>Recipes: extending the tool safely</td></tr>
+<tr><td><b>15</b></td><td>Failure modes and known limits</td></tr>
+<tr><td><b>16</b></td><td>Study plan and self-test</td></tr>
+<tr><td><b>17</b></td><td>Glossary</td></tr>
+</tbody></table>
+
+<h2><span class="num">01</span>What the tool is, and what it refuses to be</h2>
+
+<p>vulnscan is a service scanner that produces a report. It opens TCP connections to a fixed list of ports, works out what is listening, judges that service against a fixed rule set, and renders the result as HTML, JSON, CSV and PDF. It is a single Python package with no third-party dependencies; nmap is optional and shelled out to when present.</p>
+
+<p>Three design commitments explain almost every decision in the codebase. If you understand these, the rest is detail.</p>
+
+<table class="mid">
+<thead><tr><th>Commitment</th><th>What it means in code</th></tr></thead>
+<tbody>
+<tr><td><b>Identify before judging</b></td><td>A port number only selects which rules are <em>worth running</em>. A finding fires only when the protocol family matches what the rule expects, or when the port is honestly marked unidentified. See <code>EXPECTED_FAMILIES</code> and <code>_exposure_confidence</code> (§4).</td></tr>
+<tr><td><b>Evidence over absence</b></td><td>An unanswered port is recorded as an identification gap, not as a clean result: <code>identification_error</code>, <code>coverage.unidentified</code>, and a "not identified" row in the report (§4, §11).</td></tr>
+<tr><td><b>Reproduce the scan</b></td><td>The report carries the engine, its version, the exact argv, the scan source and platform, the skipped port states, what was <em>not</em> tested, and the raw nmap XML is written next to the report (§2, §11).</td></tr>
+</tbody></table>
+
+<h3>The numbers that describe it</h3>
+<table class="tight">
+<tbody>
+<tr><td><b>58</b></td><td>rule IDs: 57 static ones across exposure, TLS, HTTP, FTP and version fingerprints, plus the database-derived <code>VS-&lt;CVE&gt;</code> family</td></tr>
+<tr><td><b>21</b></td><td>port-gated exposure rules, each with an expected protocol family</td></tr>
+<tr><td><b>60</b></td><td>default ports (<code>-p top</code>); <code>-p all</code> is 65,535, <code>-p 1-1000</code> and lists/ranges are accepted</td></tr>
+<tr><td><b>9</b></td><td>read-only app-layer probes (Docker, etcd, Kibana, Kubernetes, Prometheus, Elasticsearch, kubelet, RabbitMQ) plus a MongoDB handshake</td></tr>
+<tr><td><b>10</b></td><td>product keys the advisory database can answer for (apache-httpd, nginx, openssh, openssl, mysql, mariadb, postgresql, redis, php, vsftpd)</td></tr>
+<tr><td><b>7 / 10</b></td><td>NSE scripts in the <code>safe</code> profile / in <code>extended</code>; <code>off</code> runs none</td></tr>
+<tr><td><b>304</b></td><td>tests, including a positive and a negative fixture for every rule ID</td></tr>
+</tbody></table>
+
+<h3>What it deliberately does not do</h3>
+<ul>
+  <li><b>No exploitation and no authentication.</b> Nothing sends credentials, nothing writes, nothing escalates. The one place a payload is sent is <code>--lab-exploits</code>, which is hard-wired to <code>127.0.0.1</code> and only runs against fingerprints it recognises (§6).</li>
+  <li><b>No UDP or SCTP.</b> The engine, the probes and the report's coverage text all assume TCP.</li>
+  <li><b>No version guessing.</b> If the banner does not reveal a version, no CVE is claimed. CVE matching is only ever as good as the identification behind it, and the report says so in its own limits section.</li>
+  <li><b>No automatic feed downloads during a scan.</b> A scan never touches the network except to reach its targets. The advisory database is built only by <code>--update-db</code>, which is a separate, explicit command (§9).</li>
+  <li><b>No bundled nmap.</b> It is discovered on <code>PATH</code> or via <code>VULNSCAN_NMAP</code> and invoked as a subprocess. Its licence forbids redistribution, and the point of this project is the report around someone else's detector.</li>
+</ul>
+
+<div class="callout">
+<p><b>Why this shape?</b> A scanner's reputation is made by what it refuses to claim. Every one of the commitments above exists because the alternative produces confident rubbish: "RDP exposed" on any port 3389, "no findings" on a tarpitted host, or a report nobody can reproduce six weeks later.</p>
+</div>
+
+<h2><span class="num">02</span>The pipeline, end to end</h2>
+
+<pre><span class="c">argv</span>
+ │
+ ├─ targets.parse_targets()   <span class="c">hostnames, IPv4, CIDR → deduped host list</span>
+ └─ targets.parse_ports()     <span class="c">"top" (60) | "all" (65535) | "22,80,8000-8100"</span>
+        │
+   engines.resolve(--engine)  <span class="c">auto: nmap if installed, else native</span>
+        │
+   ┌────┴─────────────────┐
+ nmap engine          native engine
+        │                    │
+ build_argv()         run_scan(): probe_port() per host × port,
+ subprocess.run       bounded by Semaphore(concurrency=256)
+ parse_xml()               │
+        │                    │
+ _enrich(): collect_evidence() on nmap's open ports
+        └─────────┬──────────┘
+                  ▼
+     services: list[PortService]   <span class="k">← scan phase ends; no more probes</span>
+                  │
+   advisories.AdvisoryDB(path)            <span class="c">opened read-only, may be absent</span>
+                │
+        checks.run_checks()
+          ├─ check_exposure(svc)          <span class="c">pure: no network</span>
+          ├─ check_http(svc)              <span class="c">pure</span>
+          ├─ check_fingerprints(svc, db)  <span class="c">pure + sqlite read</span>
+          ├─ check_ftp_anonymous()        <span class="c">network: one login attempt</span>
+          └─ check_tls(svc, legacy)       <span class="c">network only with --legacy-tls</span>
+                ▼
+     findings: list[Finding]              <span class="c">sorted, IDs VS-0001…</span>
+                │
+     report.build_report() → dict
+                │
+   ┌────────┬──────────┬────────┬──────┬──────┐
+  JSON   .nmap.xml    HTML     CSV    PDF
+</pre>
+
+<table class="mid">
+<thead><tr><th>Stage</th><th>Function</th><th>Decides</th></tr></thead>
+<tbody>
+<tr><td><b>Parse</b></td><td><code>cli.main</code></td><td>Saved config vs per-run flags; exit 2 on a bad spec before any packet is sent.</td></tr>
+<tr><td><b>Expand</b></td><td><code>targets.parse_targets</code>, <code>parse_ports</code></td><td>Which host/port pairs exist; CIDR larger than 1024 addresses is refused, not truncated.</td></tr>
+<tr><td><b>Resolve engine</b></td><td><code>engines.resolve</code></td><td>nmap or native, and the <code>fallback_reason</code> string that ends up in the report.</td></tr>
+<tr><td><b>Scan</b></td><td><code>nmap.run</code> / <code>native.run</code></td><td>Which ports are open and, for each, what identity claims exist.</td></tr>
+<tr><td><b>Enrich</b></td><td><code>scanner.collect_evidence</code></td><td>TLS, banner, HTTP, app-probe and product/version facts — the same evidence whichever engine found the port.</td></tr>
+<tr><td><b>Advisory DB</b></td><td><code>advisories.AdvisoryDB</code></td><td>Whether version-range matching is available at all; recorded either way.</td></tr>
+<tr><td><b>Check</b></td><td><code>checks.run_checks</code></td><td>Which findings exist, their severity, their confidence and their stable IDs.</td></tr>
+<tr><td><b>Filter</b></td><td><code>report.confirmed_only</code></td><td>With <code>--strict</code>, keeps only <code>certain</code> findings and counts the suppressed ones.</td></tr>
+<tr><td><b>Assemble</b></td><td><code>report.build_report</code></td><td>The JSON contract: <code>metadata</code>, <code>scope</code>, <code>coverage</code>, <code>summary</code>, <code>services</code>, <code>findings</code>.</td></tr>
+<tr><td><b>Render</b></td><td><code>write_json</code>, <code>write_html</code>, <code>write_csv</code>, <code>pdf.html_to_pdf</code></td><td>Artifacts on disk, all sharing one file stem derived from <code>-r</code>.</td></tr>
+</tbody></table>
+
+<div class="callout">
+<p><b>The two-network-phase rule.</b> Everything between "services collected" and "findings returned" is pure except two deliberate exceptions: the anonymous-FTP login attempt and the optional TLS-1.0/1.1 handshakes. That is why the checks are cheap to re-run, why the fixtures in <code>tests/test_rule_matrix.py</code> can build a <code>PortService</code> by hand, and why a report can be regenerated from a saved JSON without touching the network.</p>
+</div>
+
+<h2><span class="num">03</span>The data model</h2>
+
+<p>Three objects carry the whole tool. Learn their fields and you can read any function in the package without looking anything up.</p>
+
+<h3><code>PortService</code> — one open port, with its evidence</h3>
+<p>Defined in <code>vulnscan/scanner.py</code> as a dataclass. It is created by the scan engine and then <em>mutated</em> by the evidence pass; after that it is read-only. Checks never write to it.</p>
+
+<table class="psvc">
+<thead><tr><th>Field</th><th>Written by</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>host</code>, <code>ip</code>, <code>port</code>, <code>proto</code></td><td>scan</td><td>The label the user asked for, the resolved address, and the port. <code>host</code> stays the hostname so reports read naturally.</td></tr>
+<tr><td><code>state</code></td><td>scan</td><td><code>open</code>, <code>closed</code> or <code>filtered</code>. Only <code>open</code> services reach the checks.</td></tr>
+<tr><td><code>service</code></td><td>scan + evidence</td><td>Protocol family name, e.g. <code>ssh</code>, <code>https</code>, <code>docker</code>. Empty means unidentified — never a guess.</td></tr>
+<tr><td><code>product</code>, <code>version</code></td><td>evidence</td><td>Extracted from a banner, HTTP <code>Server</code> header or protocol handshake. This pair is the only input to CVE matching.</td></tr>
+<tr><td><code>banner</code></td><td>evidence</td><td>Up to 4&nbsp;KB of what the service said without being asked (server-first ports) or after one probe.</td></tr>
+<tr><td><code>probe</code></td><td>evidence</td><td>What was sent to elicit that banner, so the report can be honest about it.</td></tr>
+<tr><td><code>tls</code></td><td>evidence</td><td><code>{ok, version, cipher, cipher_bits, cert{…}}</code>; <code>cert</code> carries subject, issuer, SANs, dates, days remaining, self-signed flag, hostname match.</td></tr>
+<tr><td><code>http</code></td><td>evidence</td><td><code>{status, scheme, path, headers, title, server, body_preview}</code> from a single GET.</td></tr>
+<tr><td><code>app</code></td><td>evidence</td><td>Read-only product verification keyed by product: <code>docker</code>, <code>etcd</code>, <code>kubelet</code>, <code>kibana</code>, <code>rabbitmq</code>, <code>prometheus</code>, <code>elasticsearch</code>, <code>kubernetes</code>, <code>mongo</code>.</td></tr>
+<tr><td><code>source</code></td><td>scan</td><td>Which engine produced the row: <code>nmap</code> or <code>native</code>.</td></tr>
+<tr><td><code>nmap_conf</code></td><td>nmap</td><td>nmap's own confidence, 0–10. <code>&ge; 8</code> is the only value that counts as a strong claim.</td></tr>
+<tr><td><code>cpe</code>, <code>extrainfo</code>, <code>os_matches</code>, <code>scripts</code>, <code>rtt_ms</code></td><td>nmap</td><td>nmap extras: CPE strings, <code>extrainfo</code> (often the distro), OS guesses, NSE output, round-trip time.</td></tr>
+<tr><td><code>identity_source</code></td><td>scan + evidence</td><td>How the current <code>service</code> was decided: <code>port</code>, <code>banner</code>, <code>http</code>, <code>nmap</code>, or <code>""</code> when nothing proved it.</td></tr>
+<tr><td><code>identity_claims</code></td><td>scan + evidence</td><td>Every claim made about the port, each with its own source. Conflicts are detected from this list, not from the final value.</td></tr>
+<tr><td><code>identification_error</code></td><td>scan</td><td>Set when the port accepted TCP and then went silent, reset, or nmap called it <code>tcpwrapped</code>. Non-empty means “identification gap”, not “clean”.</td></tr>
+<tr><td><code>scanned_at</code></td><td>scan</td><td>UTC timestamp, so evidence has an age.</td></tr>
+</tbody></table>
+
+<h3><code>Finding</code> — one judgement, with its reasons</h3>
+<p>Defined in <code>vulnscan/checks.py</code>. It is deliberately dumb: text, a severity, a confidence, and pointers to the asset. Everything derived — CVSS, ATT&amp;CK, detection guidance, entry-point flag, provenance — is computed at report time by <code>report._finding_dict</code>, so a rule author never has to remember to fill in a score.</p>
+
+<table class="mid">
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>rule_id</code></td><td>Stable identity of the rule, e.g. <code>VS-EXP-DOCKER</code>. Used as the key for guidance, CVSS vectors, tests and remediation grouping. Advisory findings use <code>VS-CVE-2024-6387</code>.</td></tr>
+<tr><td><code>title</code>, <code>description</code>, <code>impact</code>, <code>remediation</code></td><td>Prose written for two readers at once: an engineer who must fix it and a manager who must prioritise it.</td></tr>
+<tr><td><code>severity</code></td><td>One of <code>critical</code>, <code>high</code>, <code>medium</code>, <code>low</code>, <code>informational</code>.</td></tr>
+<tr><td><code>confidence</code></td><td><code>certain</code>, <code>firm</code> or <code>tentative</code> — the evidence axis, independent of severity (§8).</td></tr>
+<tr><td><code>evidence</code></td><td>The actual bytes or response that justify the finding, truncated to something a human can read. Binary handshakes are described, not dumped.</td></tr>
+<tr><td><code>asset</code></td><td><code>{host, ip, port, protocol, service}</code> plus <code>url</code> for HTTP findings. This is what ties a finding to a row in the asset inventory.</td></tr>
+<tr><td><code>cwe</code>, <code>cve</code>, <code>references</code></td><td>CWE IDs, CVE IDs, and links (CWE page, vendor docs, advisory URL).</td></tr>
+<tr><td><code>cvss_vector</code></td><td>Only set when an advisory supplied NVD's own vector. Empty means the report derives one (§8).</td></tr>
+<tr><td><code>id</code></td><td>Assigned at the end of <code>run_checks</code>: <code>VS-0001</code>… in severity order, then host/port, so two scans of the same host produce the same numbering.</td></tr>
+<tr><td><code>status</code></td><td><code>open</code> today; the field exists so a later workflow can carry <code>accepted</code>/<code>fixed</code> without a schema break.</td></tr>
+</tbody></table>
+
+<h3>The report dict — the JSON contract</h3>
+<p><code>report.build_report</code> returns a plain dictionary with schema version <code>1.3</code>. Everything else in the report layer renders from this structure, so JSON, HTML, CSV and PDF can never disagree about a fact.</p>
+
+<table class="tight">
+<thead><tr><th>Key</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>report_version</code></td><td><code>"1.3"</code>. Bumped when a key is added, as <code>metadata.report_name</code> was.</td></tr>
+<tr><td><code>metadata</code></td><td>Title and report name, scanner name/version, engine, <code>scan</code> meta, <code>advisory_db</code> meta, scan source host, generated/started timestamps, duration.</td></tr>
+<tr><td><code>scope</code></td><td>Targets, port count, compact port range, method sentence, and the options actually in force (timeout, concurrency, strict, reference, NSE profile, version intensity).</td></tr>
+<tr><td><code>coverage</code></td><td>The provenance block: engine and version, requested engine, fallback reason, argv and shell-joined command, privileged flag, scripts, timeouts, skipped port states, <code>unidentified[]</code>, <code>app_probes[]</code>, advisory status, authorisation reference, <code>not_tested[]</code>.</td></tr>
+<tr><td><code>summary</code></td><td>Total findings, counts by severity, open service count.</td></tr>
+<tr><td><code>services</code></td><td>One dict per open service. Optional keys (<code>tls</code>, <code>http</code>, <code>cpe</code>, <code>scripts</code>, <code>os</code>, <code>app</code>, <code>identity_claims</code>, <code>identification_error</code>) appear only when they exist, which keeps the JSON small.</td></tr>
+<tr><td><code>findings</code></td><td>One dict per finding, enriched with <code>cvss</code>, <code>attack</code>, <code>detection</code>, <code>next_step</code>, <code>entry_point</code> and <code>provenance</code>.</td></tr>
+</tbody></table>
+
+<div class="callout">
+<p><b>Why derive instead of store?</b> If CVSS were stored on the finding, changing a curated vector would silently leave old numbers in place, and a rule could be edited into a state where its severity and its score disagree. Deriving it at write time means the vector table is the single source of truth — and <code>tests/test_cvss.py</code> pins every vector to the band its rule emits.</p>
+</div>
+
+<h2><span class="num">04</span>Identity: ports locate, protocols decide</h2>
+
+<p>This is the core of the tool. Everything else is bookkeeping around it.</p>
+
+<p>A port number is a hint about where to look, never a fact about what is there. Port 3389 is <em>usually</em> RDP; it is sometimes an HTTPS admin panel, sometimes a honeypot, sometimes an SSH tunnel endpoint. A scanner that reports “RDP exposed” because something answered on 3389 is doing nmap-without-<code>-sV</code>, and it is the single largest source of false positives in this class of tool. vulnscan therefore separates <b>locating</b> from <b>deciding</b>.</p>
+
+<h3>The four facts that decide a port's fate</h3>
+<table class="mid">
+<tbody>
+<tr><td><b>1. Family</b></td><td><code>service_family(svc)</code> maps the identified service name onto a family through <code>SERVICE_FAMILIES</code> (52 service names → 31 families). If the name is unknown it falls back to transport facts: an HTTP response means <code>http</code>, a completed handshake means <code>tls</code>, otherwise <code>unknown</code>.</td></tr>
+<tr><td><b>2. Expected</b></td><td><code>EXPECTED_FAMILIES[port]</code> lists the families that make a rule meaningful on that port. Port 2376 expects <code>{docker, http, tls}</code>; port 3389 expects <code>{rdp}</code> and nothing else.</td></tr>
+<tr><td><b>3. Strength</b></td><td><code>identity_source</code> in <code>{nmap, http, banner}</code>, or an nmap claim with <code>conf &ge; 8</code> and a real protocol name. <code>port</code> is <em>not</em> strong.</td></tr>
+<tr><td><b>4. Conflict</b></td><td>Two strong claims that map to different families, ignoring families that all ride HTTP (a Docker API and an HTTP response are the same protocol seen two ways). Conflicts downgrade to <code>tentative</code> rather than picking a winner.</td></tr>
+</tbody></table>
+
+<p>The decision itself is eight lines:</p>
+<pre>def _exposure_confidence(svc, expected):
+    if identity_conflicts(svc):
+        return <span class="k">"tentative"</span>
+    if identity_is_strong(svc):
+        return <span class="k">"firm"</span> if service_family(svc) in expected else <span class="r">None</span>
+    return <span class="k">"tentative"</span>
+</pre>
+
+<p>Read the third line carefully, because it is the whole point: a <b>strong</b> identity that is <b>not</b> in the expected set returns <code>None</code>, and <code>None</code> means the finding is not created at all. A strong identity in the expected set is <code>firm</code>. A <em>weak</em> identity — one nothing proved — is <code>tentative</code>, which still produces a finding, labelled.</p>
+
+<table class="mid">
+<thead><tr><th>Situation</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>3389 answers with an SSH banner</td><td>Strong <code>ssh</code>; <code>ssh &ne; rdp</code> &rarr; <b>no RDP finding</b>. Nothing claims SSH either: there is no SSH exposure rule at all, only a version fingerprint.</td></tr>
+<tr><td>3389 accepts TCP, says nothing</td><td>Weak identity &rarr; <b>tentative</b> RDP finding: “port 3389 is open; the protocol was not confirmed”. Uncertain, not silent.</td></tr>
+<tr><td>3389 completes a TLS handshake</td><td>Strong <code>tls</code>; family <code>tls &ne; rdp</code> &rarr; no RDP finding, and the TLS rules run on their own evidence.</td></tr>
+<tr><td>3389 identified as RDP by nmap (<code>conf 10</code>)</td><td>Strong <code>rdp</code>, family matches &rarr; <b>firm</b>. <code>--nse extended</code> adds <code>rdp-ntlm-info</code> output as quoted corroboration — same confidence, better evidence.</td></tr>
+<tr><td>Redis speaking on 6380</td><td>No entry in <code>EXPOSURE_RULES</code>, but <code>_check_redis</code> is keyed by <b>family</b>, so it is still found and judged correctly.</td></tr>
+<tr><td>Apache answering on 6379</td><td>Family <code>http</code>; <code>_check_redis</code> returns early for an identified non-Redis service, so no false Redis finding.</td></tr>
+</tbody></table>
+
+<h3>What can upgrade a tentative claim</h3>
+<p>Uncertainty is not permanent — the code looks for proof in this order, each step recorded as its own identity claim:</p>
+<ol>
+  <li><b>A curated NSE script answer.</b> <code>SERVICE_PROOF_SCRIPTS</code> maps ports to a script and a marker: <code>22 → ssh-auth-methods</code>, <code>445 → smb-os-discovery</code> (<code>OS:</code> line), <code>3389 → rdp-ntlm-info</code> (<code>Product_Version</code>, <code>Target_Name</code>). A real answer upgrades <code>tentative → firm</code>.</li>
+  <li><b>An app-layer probe.</b> A 200 with the product's own markers (Docker's <code>ApiVersion</code>, Elasticsearch's <code>cluster_name</code>, kubelet's pod list) upgrades to <code>certain</code>. A 200 without markers, or a 401/403, proves the product exists but not that it is open &rarr; <code>firm</code>.</li>
+  <li><b>A protocol handshake the scanner can parse.</b> MongoDB's <code>listDatabases</code> reply with <code>ok: 1</code> is <code>certain</code>; an auth-required error is <code>firm</code>.</li>
+</ol>
+
+<h3>Unidentified is a first-class outcome</h3>
+<p><code>UNIDENTIFIED_SERVICE_NAMES</code> is <code>{“”, “unknown”, “tcpwrapped”}</code>. Two paths set <code>identification_error</code>:</p>
+<ul>
+  <li><b>Native:</b> a connection accepted and then reset/aborted while identifying &rarr; <code>“connection reset during identification”</code>. The service name is cleared so no port-table guess can stand in for a protocol.</li>
+  <li><b>nmap:</b> a <code>service</code> element named <code>tcpwrapped</code> or <code>unknown</code> &rarr; <code>“nmap reported tcpwrapped — the port answered TCP but sent no readable protocol”</code>. Its <code>conf</code> value is ignored, because a high confidence in “I could not tell” is not an identification.</li>
+</ul>
+<p>That gap then appears in four places: the console note at the end of the scan, <code>coverage.unidentified</code> in the JSON, a row in the report's coverage table, and <code>not identified</code> in the asset inventory CSV. The report also never counts it as a clean port.</p>
+
+<div class="callout crit">
+<p><b>The failure this replaced.</b> Before this model, <code>EXPOSURE_RULES</code> was keyed on the port number alone and fired with <code>confidence="firm"</code>. Scanning <code>-p all</code> against any host produced a page of confident highs about services that were never there, and a tarpitted port 22 produced nothing at all — the two failure modes that make a scanner untrustworthy at the same time.</p>
+</div>
+
+<h2><span class="num">05</span>The two engines: nmap and native</h2>
+
+<p>Both engines return the same thing — <code>list[PortService]</code> plus a metadata dict — so nothing downstream cares which one ran. The difference is what they can prove and what they cost.</p>
+
+<table>
+<thead><tr><th>&nbsp;</th><th>nmap engine</th><th>native engine</th></tr></thead>
+<tbody>
+<tr><td><b>Finds open ports by</b></td><td>nmap's own connect/syn scan</td><td>one <code>asyncio.open_connection</code> per host×port</td></tr>
+<tr><td><b>Identifies by</b></td><td><code>-sV</code> probe database, ~2,200 service fingerprints</td><td>first-bytes classification plus 5 curated payloads, then a second pass for TLS/HTTP</td></tr>
+<tr><td><b>Can produce</b></td><td>service name, product, version, <code>extrainfo</code>, CPE strings, OS matches, NSE output</td><td>service name, banner-derived product/version, TLS, HTTP, app-probe proof</td></tr>
+<tr><td><b>Privileges</b></td><td>works unprivileged with <code>-Pn -sV</code>; richer with raw sockets</td><td>none beyond outbound TCP</td></tr>
+<tr><td><b>Reported as</b></td><td><code>engine: "nmap"</code>, version from the XML</td><td><code>engine: "native"</code>, version <code>vulnscan 0.1.0</code></td></tr>
+</tbody></table>
+
+<h3>Engine resolution</h3>
+<p><code>engines.resolve()</code> is deliberately dull: <code>native</code> never looks for nmap; <code>nmap</code> raises <code>EngineUnavailable</code> rather than silently scanning with something else; <code>auto</code> prefers nmap and records why it fell back. That reason is printed, stored as <code>coverage.fallback_reason</code>, and shown in the report's coverage table — a scan that quietly used the weaker detector would be lying about its own evidence.</p>
+
+<h3>The nmap command line</h3>
+<p>Built by <code>build_argv</code>, passed to <code>subprocess.run</code> as a list. No shell, so nothing in a target or option can be interpreted as a command; the port list is compacted into ranges (<code>-p-</code> when the whole range is requested).</p>
+<pre>nmap  <span class="k">-sV</span> [<span class="k">--version-intensity</span> N]
+      <span class="k">-Pn</span>                   <span class="c"># treat targets as up; ICMP is often filtered</span>
+      <span class="k">-n</span>                    <span class="c"># no reverse DNS; names come from the targets</span>
+      <span class="k">-T4</span> <span class="k">--max-retries 2</span> <span class="k">--host-timeout 300s</span>
+      [<span class="k">--script</span> ssl-cert,http-title,… <span class="k">--script-timeout 30s</span>]
+      <span class="k">-oX -</span> <span class="k">-p</span> 22,80,443 … host…</pre>
+<p>The whole subprocess has its own ceiling (<code>process_timeout_s=1800</code>) separate from the per-host timeout, so a wedged nmap cannot hang a scan forever. The XML comes back on stdout and is parsed with <code>ElementTree</code>; the raw text is stashed in <code>meta["_raw_xml"]</code>, which the CLI pops and writes next to the report.</p>
+
+<h3>What <code>parse_xml</code> keeps, and what it refuses</h3>
+<ul>
+  <li>Only <code>state=open</code> ports become services; every other state is counted into <code>skipped_ports</code> (<code>closed</code>, <code>filtered</code>, …) and surfaces in coverage. A filtered port is never mistaken for a clean one.</li>
+  <li><code>tunnel=ssl</code> + <code>http</code> is renamed <code>https</code>, because nmap reports the pair as <code>ssl/http</code>.</li>
+  <li>The host label is the name the user asked for, then the PTR record, then the address — so a report says <code>scanme.org:22</code>, not <code>45.33.32.156:22</code>.</li>
+  <li><strong><code>tcpwrapped</code> and <code>unknown</code> are not identifications.</strong> The service name is dropped, <code>identification_error</code> is set, and <code>identity_source</code> becomes <code>""</code>. nmap's <code>conf</code> is ignored in that case: a high confidence in “I could not tell” is still not a protocol.</li>
+  <li>NSE script output is kept only when it is a real answer — empty runs, <code>Script execution failed</code> and <code>ERROR:</code> lines are dropped rather than printed as evidence.</li>
+</ul>
+
+<h3>Why nmap's own detection is not simply trusted</h3>
+<p>The nmap engine still runs <code>_enrich()</code>: for every open TCP port it calls the same <code>collect_evidence</code> the native engine uses. When nmap's name is <em>weak</em> (<code>conf &lt; 8</code>, <code>unknown</code>, or a trailing <code>?</code>), the evidence pass is allowed to name the port from what the service actually said (<code>guess_names=True</code>). When nmap's name is strong, its product/version is kept and the evidence pass only fills gaps. This is how a host that nmap calls “maybe SSH” gets corrected by an actual banner, and how a verified <code>OpenSSH 9.6p1</code> keeps nmap's precision instead of being overwritten by a regex that saw less.</p>
+
+<h3>The native engine, connection by connection</h3>
+<p><code>probe_port</code> is the only place a port is identified, and it is written to spend as few connections as possible. The order is:</p>
+<ol>
+  <li><b>TLS-first ports</b> (<code>TLS_PORTS</code>: 443, 465, 636, 993, 995, 2376, 5671, 6443, 8443, 8883, 9443) go straight to a handshake. A refused connection ends the probe as <code>closed</code>, a timeout as <code>filtered</code> — neither gets a second attempt. On success the same socket is reused for the HTTPS request (<code>TLS_HTTP_PORTS</code>).</li>
+  <li><b>Everything else</b> gets one plain TCP connect. Server-first services (FTP, SSH, SMTP, MySQL, VNC … — <code>SERVER_FIRST_PORTS</code>) are read immediately; client-first services are sent a read-only probe on <em>that same socket</em>.</li>
+  <li><b>First-bytes classification</b> runs on whatever arrived. The classifier checks binary handshakes first (MySQL's protocol byte, PostgreSQL's length-prefixed message, MongoDB's opcode), then textual markers, most specific first: <code>ssh-</code>, <code>rfb 00</code>, <code>redis_version</code>, <code>-err unknown command</code>, <code>stat pid</code> / <code>stat version</code>, <code>220 (vsftpd</code>/<code>proftpd</code>/<code>pure-ftpd</code>, <code>+ok</code>, <code>* ok</code>, <code>amqp</code>, <code>mysql_native_password</code>, <code>password authentication failed</code>, <code>\xffsmb</code>, <code>http/</code>.</li>
+  <li><b>A bare <code>220</code> is ambiguous</b> — FTP and SMTP both greet that way — so it is recorded as <code>ftp/smtp</code> and never allowed to overrule a port-based guess. It may still name a port that was otherwise silent.</li>
+  <li><b>If nothing plaintext answered</b>, one TLS handshake is tried as a last resort. That is how an HTTPS service squatting on an unusual port is identified instead of being mislabelled from the port table.</li>
+  <li><b>Only then</b> may the port table supply a name, and <code>identity_source</code> is set to <code>port</code> — which is exactly the marker the checks treat as <em>not proven</em>.</li>
+</ol>
+<p>The connection budget is asserted by <code>tests/test_sniffer.py</code>: one connection for SSH, one for HTTP, one for a waiting service that must be asked, and two for HTTPS on an unusual port (handshake, then a separate request). App-layer probes and the FTP login attempt are the only extra connections, and both are deliberate, read-only requests.</p>
+
+<table class="tight">
+<thead><tr><th>Constant</th><th>What it holds</th></tr></thead>
+<tbody>
+<tr><td><code>PORT_SERVICES</code></td><td>58 port → name entries. A guess, used only when nothing on the wire named the service.</td></tr>
+<tr><td><code>PROBES</code></td><td>5 payloads for services that wait to be addressed: SMTP <code>EHLO</code>, Redis <code>INFO server</code>, memcached <code>stats</code>, ZooKeeper <code>ruok</code> (and 587 as SMTP submission).</td></tr>
+<tr><td><code>active_probe()</code></td><td>The same map, plus a MongoDB <code>isMaster</code> OP_QUERY and the classic RDP X.224 negotiation request for 3389.</td></tr>
+<tr><td><code>HTTP_PORTS</code> / <code>NON_HTTP_PORTS</code></td><td>Where an HTTP GET is worth trying first, and where it is pointless noise (SSH, RDP, MySQL …). HTTP is still attempted on a port that said nothing at all.</td></tr>
+</tbody></table>
+
+<div class="callout">
+<p><b>Why keep two engines at all?</b> nmap is better at identification and has version probe data this project will never reproduce. The native engine exists so the tool works on a machine with nothing but Python — and so every report can be reproduced by someone who does not have nmap installed. Neither is a shim around the other: they share the evidence pass, the checks and the report.</p>
+</div>
+
+<h2><span class="num">06</span>Evidence: what is actually said on the wire</h2>
+
+<p>All evidence collection lives in <code>scanner.py</code> and is called from exactly one place per engine (<code>collect_evidence</code> for nmap, <code>probe_port</code> for native). The rule for everything in this section: <b>read only</b>. No credentials, no writes, no exploitation.</p>
+
+<table class="mid">
+<thead><tr><th>Collector</th><th>What it does and why it is bounded</th></tr></thead>
+<tbody>
+<tr><td><code>grab_banner</code></td><td>Reads at most 4&nbsp;KB, decodes as latin-1 (so binary handshakes do not raise), returns the first 1&nbsp;KB plus a note of what was sent. Timeouts and read failures return empty strings with a reason, never an exception.</td></tr>
+<tr><td><code>http_fetch</code></td><td>One <code>GET /</code> (or a product path), explicit <code>Host</code> header including a non-default port, UA <code>vulnscan/0.1</code>, and a 64&nbsp;KB body cap with a grace period after the headers. Returns status, headers, title and a body preview — nothing is followed, retried or authenticated.</td></tr>
+<tr><td><code>tls_session</code> / <code>probe_tls</code></td><td>Handshake with verification disabled (the certificate is <em>analysed</em>, not trusted), then version, cipher, bits and a decoded certificate: subject, issuer, SANs, notBefore/notAfter, days remaining, self-signed, hostname match. DER decoding uses CPython's <code>_test_decode_cert</code>, a private API — a known, contained risk: failure returns <code>{}</code> and the TLS checks fall back to what the handshake itself showed.</td></tr>
+<tr><td><code>supports_tls_version</code></td><td>Pins <code>minimum_version = maximum_version</code> and tries a handshake. Only called with <code>--legacy-tls</code>, because it is two extra connections per TLS service and most engagements do not need it.</td></tr>
+<tr><td><code>probe_app_layer</code></td><td>One GET against a product-specific endpoint, recorded as <code>svc.app[product]</code> with status, body preview and a <code>confirmed</code> flag. A 200 whose body carries the product's markers is proof; a 200 without them, or a 401/403, proves presence with auth in front.</td></tr>
+<tr><td><code>probe_mongo</code></td><td>A hand-rolled OP_QUERY for <code>isMaster</code> and <code>listDatabases</code> built with <code>struct</code> and a minimal BSON encoder. It parses the reply just far enough to read <code>ok</code> and the version. No credentials are ever sent, and <code>listDatabases</code> on a server without auth is the difference between “reachable” and “open”.</td></tr>
+<tr><td><code>_extract_product</code></td><td>Regex fingerprints for the cases that matter: <code>SSH-2.0-OpenSSH_9.6p1</code>, <code>220 (vsFTPd 3.0.3)</code>, SMTP greetings and <code>Postfix</code>/<code>Exim</code>/<code>sendmail</code>, MySQL's handshake version string, Redis <code>redis_version:…</code>, memcached <code>STAT version …</code>, and <code>Server: nginx/1.18.0 (Ubuntu)</code> → <code>(nginx, 1.18.0)</code>.</td></tr>
+</tbody></table>
+
+<h3>The nine app-layer probes</h3>
+<table class="tight">
+<thead><tr><th>Port</th><th>Product</th><th>Endpoint</th><th>Proof looks like</th></tr></thead>
+<tbody>
+<tr><td>2375 / 2376</td><td>docker</td><td><code>/version</code></td><td>body contains <code>docker</code> and <code>apiversion</code></td></tr>
+<tr><td>2379</td><td>etcd</td><td><code>/health</code></td><td><code>health</code></td></tr>
+<tr><td>5601</td><td>kibana</td><td><code>/api/status</code></td><td><code>status</code>, <code>version</code></td></tr>
+<tr><td>6443</td><td>kubernetes</td><td><code>/version</code></td><td><code>gitversion</code>, <code>major</code></td></tr>
+<tr><td>9090</td><td>prometheus</td><td><code>/api/v1/targets</code></td><td><code>activetargets</code>, <code>success</code></td></tr>
+<tr><td>9200</td><td>elasticsearch</td><td><code>/_cluster/health</code></td><td><code>cluster_name</code>, <code>status</code></td></tr>
+<tr><td>10250</td><td>kubelet</td><td><code>/pods</code></td><td><code>items</code>, <code>podlist</code>, <code>apiversion</code></td></tr>
+<tr><td>15672</td><td>rabbitmq</td><td><code>/api/overview</code></td><td><code>rabbitmq_version</code>, <code>management_version</code></td></tr>
+<tr><td>27017</td><td>mongo</td><td>BSON handshake</td><td><code>ok: 1</code> from <code>listDatabases</code>, or an auth error</td></tr>
+</tbody></table>
+<p>Probes are skipped unless the port is in the table <em>and</em> the service looks HTTP-ish (or the port's own service already matches the product), so an SSH daemon never receives an HTTP request. Acceptable statuses are 200, 401, 403 and 404; anything else is discarded rather than guessed at.</p>
+
+<h3>The one place a payload is sent on purpose</h3>
+<p><code>vulnscan/lab_exploits.py</code> runs fixed, non-destructive proof payloads — an anonymous FTP login, a Redis <code>INFO</code>, a <code>/version</code> on a Docker API, a path-traversal read against vsftpd 2.3.4 — but only for <code>--lab-exploits</code>, only to <code>127.0.0.1</code>, only when a lab fingerprint matches, and with a response cap. The module has no host argument by design: there is no way to aim it at a real target.</p>
+
+<h2><span class="num">07</span>The rule catalogue</h2>
+
+<p>Fifty-seven static rule IDs live in <code>vulnscan/checks.py</code>, and a fifty-eighth family — <code>VS-&lt;CVE&gt;</code> — is generated from the advisory database. They are grouped here by <em>what gates them</em>, because that is the thing you need to know when deciding whether a finding is trustworthy.</p>
+
+<p><code>run_checks</code> runs three families per service in a fixed order — exposure, HTTP, fingerprints — then the two network-dependent families across the whole service list (anonymous FTP, then TLS with optional legacy handshakes). Findings are then sorted by severity, host, port and rule ID, and given <code>VS-0001</code>… IDs, so numbering is reproducible for the same input.</p>
+
+<h3>A. Port-gated exposure (21 ports, 20 IDs)</h3>
+<p>Fires only when the protocol family matches the port's <code>EXPECTED_FAMILIES</code>; otherwise it is suppressed (contradicted) or downgraded to tentative (unidentified). See §4.</p>
+<table class="cat">
+<thead><tr><th>Port</th><th>Rule ID</th><th>Expected family</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td>23</td><td><code>VS-EXP-TELNET</code></td><td>telnet</td><td>high</td></tr>
+<tr><td>2323</td><td><code>VS-EXP-TELNET-ALT</code></td><td>telnet</td><td>high</td></tr>
+<tr><td>3389</td><td><code>VS-EXP-RDP</code></td><td>rdp</td><td>high</td></tr>
+<tr><td>445</td><td><code>VS-EXP-SMB</code></td><td>smb</td><td>high</td></tr>
+<tr><td>5900, 5901</td><td><code>VS-EXP-VNC</code></td><td>vnc</td><td>high</td></tr>
+<tr><td>2376</td><td><code>VS-EXP-DOCKER-TLS</code></td><td>docker, http, tls</td><td>high</td></tr>
+<tr><td>2379</td><td><code>VS-EXP-ETCD</code></td><td>etcd, http</td><td>high</td></tr>
+<tr><td>10250</td><td><code>VS-EXP-KUBELET</code></td><td>kubelet, http</td><td>high</td></tr>
+<tr><td>5985</td><td><code>VS-EXP-WINRM</code></td><td>winrm, http</td><td>high</td></tr>
+<tr><td>873</td><td><code>VS-EXP-RSYNC</code></td><td>rsync</td><td>medium</td></tr>
+<tr><td>1433</td><td><code>VS-EXP-MSSQL</code></td><td>mssql</td><td>medium</td></tr>
+<tr><td>1521</td><td><code>VS-EXP-ORACLE</code></td><td>oracle</td><td>medium</td></tr>
+<tr><td>2049</td><td><code>VS-EXP-NFS</code></td><td>nfs</td><td>medium</td></tr>
+<tr><td>3306</td><td><code>VS-EXP-MYSQL</code></td><td>mysql</td><td>medium</td></tr>
+<tr><td>5432</td><td><code>VS-EXP-POSTGRES</code></td><td>postgres</td><td>medium</td></tr>
+<tr><td>5601</td><td><code>VS-EXP-KIBANA</code></td><td>kibana, http</td><td>medium</td></tr>
+<tr><td>15672</td><td><code>VS-EXP-RABBITMQ</code></td><td>rabbitmq, http</td><td>medium</td></tr>
+<tr><td>9090</td><td><code>VS-EXP-PROMETHEUS</code></td><td>prometheus, http</td><td>low</td></tr>
+<tr><td>9201</td><td><code>VS-EXP-ADMIN</code></td><td>http</td><td>low</td></tr>
+<tr><td>6443</td><td><code>VS-EXP-K8S-API</code></td><td>kubernetes, http, tls</td><td>informational</td></tr>
+</tbody></table>
+
+<h3>B. Evidence-gated services (keyed by protocol, not port)</h3>
+<table class="mid">
+<thead><tr><th>Rule</th><th>Fires when</th><th>Sev / confidence</th></tr></thead>
+<tbody>
+<tr><td><code>VS-EXP-REDIS-NOAUTH</code></td><td><code>INFO</code> returned <code>redis_version</code> without <code>AUTH</code></td><td>critical / certain</td></tr>
+<tr><td><code>VS-EXP-REDIS-AUTH</code></td><td>Redis answered <code>NOAUTH</code> / “authentication required”</td><td>medium / firm</td></tr>
+<tr><td><code>VS-EXP-REDIS</code></td><td>Looks like Redis but the banner revealed neither</td><td>medium / tentative</td></tr>
+<tr><td><code>VS-EXP-MEMCACHED-NOAUTH</code></td><td><code>stats</code> returned <code>STAT …</code></td><td>critical / certain</td></tr>
+<tr><td><code>VS-EXP-MEMCACHED</code></td><td>Memcached family, no stats answer</td><td>medium / firm or tentative</td></tr>
+<tr><td><code>VS-EXP-DOCKER</code></td><td>Docker family or port 2375, not contradicted by another strong identity</td><td>critical / certain, firm or tentative by proof</td></tr>
+<tr><td><code>VS-EXP-MONGODB</code></td><td>Mongo family or 27017; <code>listDatabases</code> raises it to certain</td><td>high / certain, firm or tentative</td></tr>
+<tr><td><code>VS-FTP-ANON</code></td><td><code>USER anonymous</code> answered <code>230</code></td><td>high / certain</td></tr>
+<tr><td><code>VS-FTP-CLEARTEXT</code></td><td>FTP family or port 21, no TLS observed</td><td>low / certain or tentative</td></tr>
+</tbody></table>
+<p>The <code>contradicted()</code> helper is what keeps these honest: a strong identity in a different family suppresses the check entirely, so an HTTP server on 11211 is not called memcached and an SSH daemon on 27017 is not called MongoDB.</p>
+
+<h3>C. TLS (7 rules, only when a handshake succeeded)</h3>
+<table class="cat">
+<thead><tr><th>Rule</th><th>Condition</th><th>Severity</th><th>Confidence</th></tr></thead>
+<tbody>
+<tr><td><code>VS-TLS-EXPIRED</code></td><td>Certificate past <code>notAfter</code></td><td>high</td><td>certain</td></tr>
+<tr><td><code>VS-TLS-NOT-YET-VALID</code></td><td><code>notBefore</code> in the future (clock skew)</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-TLS-EXPIRING</code></td><td>Fewer than 14 days remaining</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-TLS-SELF-SIGNED</code></td><td>Subject equals issuer</td><td>low</td><td>certain</td></tr>
+<tr><td><code>VS-TLS-HOSTNAME</code></td><td>No SAN covers the scanned host</td><td>medium</td><td>firm</td></tr>
+<tr><td><code>VS-TLS-WEAK-CIPHER</code></td><td>Negotiated cipher contains NULL, EXPORT, RC4, 3DES or anon</td><td>high</td><td>certain</td></tr>
+<tr><td><code>VS-TLS-LEGACY</code></td><td>A pinned TLS 1.0/1.1 handshake succeeded (<code>--legacy-tls</code>)</td><td>medium</td><td>firm</td></tr>
+</tbody></table>
+<p>When nmap also ran <code>ssl-cert</code>, its output is appended as corroboration to the certificate findings rather than creating a second finding for the same fact.</p>
+
+<h3>D. HTTP (16 rules, only when a response was parsed)</h3>
+<table class="cat">
+<thead><tr><th>Rule</th><th>Looks at</th><th>Severity</th><th>Confidence</th></tr></thead>
+<tbody>
+<tr><td><code>VS-HTTP-CLEARTEXT</code></td><td>HTTP served where HTTPS is expected</td><td>informational</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-SERVER-VERSION</code></td><td><code>Server:</code> discloses a version</td><td>low</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-POWERED-BY</code></td><td><code>X-Powered-By:</code> present</td><td>low</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-COOKIE-NO-SECURE</code></td><td><code>Set-Cookie</code> without <code>Secure</code></td><td>medium</td><td>firm</td></tr>
+<tr><td><code>VS-HTTP-COOKIE-NO-HTTPONLY</code></td><td><code>Set-Cookie</code> without <code>HttpOnly</code></td><td>low</td><td>firm</td></tr>
+<tr><td><code>VS-HTTP-DIR-LISTING</code></td><td>Index page is a directory listing</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-STACKTRACE</code></td><td>Framework debug output in the body</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-ES-OPEN</code></td><td>Port 9200, 200 with <code>cluster</code></td><td>critical</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-ES-EXPOSED</code></td><td>Port 9200, 401/403</td><td>medium</td><td>firm</td></tr>
+<tr><td><code>VS-HTTP-DOCKER-VERSION</code></td><td>2375/2376, 200 with Docker markers</td><td>critical</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-ADMIN-OPEN</code></td><td>Console on 5601/15672/9090/8500/8983/5985 answering 200</td><td>high</td><td>firm</td></tr>
+<tr><td><code>VS-HTTP-HSTS</code></td><td>Missing Strict-Transport-Security</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-CSP</code></td><td>Missing Content-Security-Policy</td><td>medium</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-XFO</code></td><td>Missing X-Frame-Options / frame-ancestors</td><td>low</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-XCTO</code></td><td>Missing X-Content-Type-Options</td><td>low</td><td>certain</td></tr>
+<tr><td><code>VS-HTTP-REFPOL</code></td><td>Missing Referrer-Policy</td><td>informational</td><td>certain</td></tr>
+</tbody></table>
+
+<h3>E. Version fingerprints (5 rules)</h3>
+<table class="mid">
+<thead><tr><th>Rule</th><th>Match</th><th>Sev / confidence</th></tr></thead>
+<tbody>
+<tr><td><code>VS-CVE-2011-2523</code></td><td>vsftpd <b>2.3.4</b> exactly — the release shipped with a backdoor</td><td>critical / certain</td></tr>
+<tr><td><code>VS-CVE-2021-41773</code></td><td>Apache httpd <b>2.4.49</b> — path traversal / RCE</td><td>critical / firm</td></tr>
+<tr><td><code>VS-CVE-2021-42013</code></td><td>Apache httpd <b>2.4.50</b> — the incomplete fix</td><td>critical / firm</td></tr>
+<tr><td><code>VS-CVE-2024-6387</code></td><td>OpenSSH <b>8.5p1–9.7p1</b> — regreSSHion</td><td>medium / tentative</td></tr>
+<tr><td><code>VS-EOL-SOFTWARE</code></td><td>Product/version past its support window</td><td>medium / firm</td></tr>
+</tbody></table>
+<p>These are hand-curated because they carry context an advisory row cannot: what the defect actually is, and whether a version banner is enough to claim it. regreSSHion is <b>tentative</b> on purpose — most distributions backported the fix without changing the upstream version, so a banner match alone is a lead, not a conclusion.</p>
+
+<h3>F. Advisory-derived findings</h3>
+<p><code>VS-&lt;CVE&gt;</code> findings come from the SQLite database (§9) and are de-duplicated against the curated rules by CVE, so a matched CVE never appears twice on one service. Severity is NVD's own band; confidence is <code>firm</code> for an upstream version in range and <code>tentative</code> when a distro package revision was detected, because a backport may already have fixed it.</p>
+
+<div class="callout">
+<p><b>One property worth remembering:</b> every check is a pure function of one <code>PortService</code> (plus, for FTP and legacy TLS, one explicit network call). There is no shared mutable state between checks, no ordering dependency, and no rule that can suppress another rule's finding. That is what makes the rule matrix (§13) possible.</p>
+</div>
+
+<h2><span class="num">08</span>Severity, confidence and CVSS</h2>
+
+<p>Three axes, deliberately independent, because collapsing them is how reports lie. A finding can be <em>high severity and tentative</em> (a possible RDP on a silent port), or <em>low severity and certain</em> (a missing Referrer-Policy).</p>
+
+<table class="mid">
+<thead><tr><th>Axis</th><th>Values</th><th>Question it answers</th></tr></thead>
+<tbody>
+<tr><td><b>Severity</b></td><td>critical, high, medium, low, informational</td><td>How bad is it if true?</td></tr>
+<tr><td><b>Confidence</b></td><td>certain, firm, tentative</td><td>How sure are we that it is true?</td></tr>
+<tr><td><b>CVSS</b></td><td>0.0–10.0 with a vector</td><td>What does the industry's scoring say, and from which vector?</td></tr>
+</tbody></table>
+
+<h3>What each confidence level has actually proved</h3>
+<table class="mid">
+<thead><tr><th>Confidence</th><th>Provenance in this codebase</th></tr></thead>
+<tbody>
+<tr><td><b>certain</b></td><td>The service answered the question itself: redis <code>INFO</code> without auth, memcached <code>stats</code>, an anonymous FTP <code>230</code>, a Docker <code>/version</code> with markers, a Mongo <code>listDatabases</code> reply, a certificate the scanner parsed, an HTTP response it read.</td></tr>
+<tr><td><b>firm</b></td><td>The protocol identity is proven but the consequence is inferred: a Redis that demands auth, a console returning 401/403, a distro-backported version match, a hostname mismatch, a version-only CVE match on a banner.</td></tr>
+<tr><td><b>tentative</b></td><td>Nothing proved the protocol; the port number is the only evidence. Also used when two strong identities disagree, and for distro package revisions.</td></tr>
+</tbody></table>
+<p><code>--strict</code> keeps only <code>certain</code> findings and reports how many it suppressed in the coverage block — the count matters, because a strict report with silent suppression would be worse than a normal one.</p>
+
+<div class="callout warn">
+<p><b>Tentative does not mean “ignore”.</b> A tentative finding says “something is listening here and we could not prove what; here is what it would mean if the port means what it usually means”. On a real engagement that is exactly the list you take into the next phase. The only identities that produce <em>no</em> finding are strong ones that contradict the rule — those are the false positives this design exists to remove.</p>
+</div>
+
+<h3>CVSS: the vector is the source of truth</h3>
+<p><code>vulnscan/cvss.py</code> implements the FIRST CVSS 3.1 base formula — attack vector, attack complexity, privileges required, user interaction, scope, and the three impact metrics — with the standard <code>Roundup</code> to one decimal. It does not store scores anywhere: it stores vectors and computes.</p>
+
+<table class="mid">
+<thead><tr><th>Precedence</th><th>Source</th><th>Used when</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>CVSS:3.x/…</code> from the advisory row</td><td>An NVD-sourced CVE match. Reported as <code>source: "nvd"</code>, and a 3.0 vector is labelled 3.0 rather than silently upgraded.</td></tr>
+<tr><td>2</td><td><code>CURATED_VECTORS[rule_id]</code></td><td>Every built-in rule has one (57 entries), written to match its severity and its real-world conditions.</td></tr>
+<tr><td>3</td><td><code>BAND_VECTORS[severity]</code></td><td>Any rule without a curated vector — a floor, so no finding renders without a score.</td></tr>
+</tbody></table>
+
+<table class="tight">
+<thead><tr><th>Example rule</th><th>Vector</th><th>Score</th><th>Band</th></tr></thead>
+<tbody>
+<tr><td><code>VS-EXP-DOCKER</code></td><td><code>AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code></td><td>9.8</td><td>critical</td></tr>
+<tr><td><code>VS-EXP-REDIS-NOAUTH</code></td><td>same</td><td>9.8</td><td>critical</td></tr>
+<tr><td><code>VS-EXP-TELNET</code></td><td><code>AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H</code></td><td>8.1</td><td>high</td></tr>
+<tr><td><code>VS-TLS-EXPIRED</code></td><td><code>AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N</code></td><td>7.4</td><td>high</td></tr>
+<tr><td><code>VS-HTTP-HSTS</code></td><td><code>AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N</code></td><td>5.3</td><td>medium</td></tr>
+<tr><td><code>VS-EXP-K8S-API</code></td><td><code>AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:N/A:N</code></td><td>0.0</td><td>informational</td></tr>
+</tbody></table>
+<p>The score is derived, and so is the band shown beside it: <code>band_for(score)</code> uses the same thresholds as the severity list (9.0 / 7.0 / 4.0 / 0.1). If a curated vector scored outside its rule's band, that is a bug in the rule — and <code>test_every_rule_vector_lands_in_its_rule_band</code> fails the build rather than letting the report paper over it at render time.</p>
+
+<h2><span class="num">09</span>The offline advisory database</h2>
+
+<p>A scan never touches the network except to reach its targets, so CVE matching cannot depend on a live API. <code>vulnscan/advisories.py</code> solves this by turning NVD's CVE JSON into a small SQLite file that is built once and queried locally, read-only, on every scan. Standard library only: <code>sqlite3</code>, <code>urllib</code>, <code>gzip</code>.</p>
+
+<table class="tight">
+<tbody>
+<tr><td><b>Source</b></td><td><code>https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{year}.json.gz</code>, one gzip file per year</td></tr>
+<tr><td><b>Default years</b></td><td>the last six (<code>--db-years 2021,2022</code> overrides)</td></tr>
+<tr><td><b>Default path</b></td><td><code>$XDG_CACHE_HOME/vulnscan/advisories.sqlite3</code> (usually <code>~/.cache/vulnscan/</code>), overridable with <code>$VULNSCAN_DB</code> or <code>--db</code></td></tr>
+<tr><td><b>Build command</b></td><td><code>python3 -m vulnscan --update-db</code> — explicit, and it exits without scanning</td></tr>
+<tr><td><b>Query mode</b></td><td><code>file:…?mode=ro</code>; a scan can never create or modify the database</td></tr>
+</tbody></table>
+
+<h3>What one CVE row becomes</h3>
+<p>NVD describes affected products as CPE criteria nested in configuration nodes, each with an optional version range. <code>rows_from_nvd</code> flattens that into rows keyed by <em>product</em>, not by CPE:</p>
+<ul>
+  <li><code>_CPE_TO_KEY</code> maps the 13 (vendor, product) pairs worth answering for onto 10 product keys: <code>apache-httpd</code>, <code>nginx</code>, <code>openssh</code>, <code>openssl</code>, <code>mysql</code>, <code>mariadb</code>, <code>postgresql</code>, <code>redis</code>, <code>php</code>, <code>vsftpd</code>. Everything else in NVD is skipped by design — a database that claims coverage it cannot verify is worse than a small one.</li>
+  <li>A range becomes <code>introduced</code>/<code>fixed</code> with inclusive flags taken from NVD's own <code>versionStartIncluding</code>, <code>versionStartExcluding</code>, <code>versionEndIncluding</code> and <code>versionEndExcluding</code>.</li>
+  <li>A single affected release encoded in the CPE string (<code>…:2.4.49:…</code> with no range) becomes <code>exact_version</code>.</li>
+  <li>A bare wildcard with no range and no fixed release is <b>skipped</b>: “all versions, no version information” cannot be graded honestly, so it is not imported.</li>
+  <li>Severity comes from NVD's score (≥9 critical, ≥7 high, ≥4 medium, &gt;0 low), falling back to NVD's label, then to medium. The CVSS vector string is stored verbatim and later becomes the finding's <code>cvss_vector</code>.</li>
+</ul>
+
+<h3>The schema</h3>
+<pre>CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE advisory (
+    cve            TEXT NOT NULL,
+    product        TEXT NOT NULL,
+    introduced     TEXT,      <span class="c">-- versionStartIncluding / Excluding</span>
+    start_inclusive INTEGER NOT NULL DEFAULT 1,
+    fixed          TEXT,      <span class="c">-- versionEndExcluding / Including</span>
+    end_inclusive   INTEGER NOT NULL DEFAULT 0,
+    exact_version   TEXT,     <span class="c">-- a single release, no range</span>
+    severity        TEXT NOT NULL,
+    cvss            REAL,
+    vector          TEXT,     <span class="c">-- CVSS:3.1/… verbatim</span>
+    summary         TEXT,
+    url             TEXT
+);
+CREATE INDEX advisory_product ON advisory(product);</pre>
+<p><code>meta</code> carries <code>schema_version</code>, <code>built_at</code>, <code>advisories</code>, <code>years</code> and <code>source</code>. Those values are what the report prints as “X CVEs, built on …” and what the coverage table quotes when the database is missing.</p>
+
+<h3>Matching a detected version</h3>
+<p><code>AdvisoryDB.lookup(product, version)</code> fetches the rows for one product and evaluates each range in Python:</p>
+<pre>exact_version set        →  parse(version) == parse(exact)
+introduced set           →  version &gt;  introduced   (or &gt;= if start_inclusive)
+fixed set                →  version &lt;  fixed        (or &lt;= if end_inclusive)</pre>
+<p>Two details matter for correctness:</p>
+<ul>
+  <li><b>Version comparison is numeric groups, not string comparison.</b> <code>parse_version</code> returns <code>(9, 6, 1)</code> for <code>9.6p1</code> and <code>(2, 4, 49)</code> for <code>2.4.49</code>, and <code>_pad</code> zero-fills the shorter tuple so <code>1.18</code> equals <code>1.18.0</code>. It is deliberately not a full package-version comparison — it matches the ordering NVD's ranges assume for these ten products.</li>
+  <li><b>One advisory per CVE.</b> NVD often lists several ranges for one CVE; the lookup keeps the row with the highest CVSS and returns sorted results. The report must not repeat the same CVE because two CPE ranges matched.</li>
+</ul>
+
+<h3>Distributions and backports: the honest part</h3>
+<p><code>split_version</code> separates an upstream version from a package revision: <code>1.18.0-1ubuntu1</code> → <code>("1.18.0", "ubuntu")</code>, <code>-2.el9</code> → red hat, and when the revision says nothing it sniffs the hints nmap and the <code>Server</code> header provide. The distro name changes the finding, not the match:</p>
+<ul>
+  <li>Upstream version in range → <code>firm</code>.</li>
+  <li>A distro package revision detected → <code>tentative</code>, plus a sentence in the description explaining that distributors routinely backport fixes without changing the upstream version, and a note in the evidence that backport status is unknown.</li>
+</ul>
+<p>This is the single most valuable piece of restraint in the tool. A scanner that reports “nginx 1.18.0 is vulnerable” on an Ubuntu host with the security patch applied is not being thorough; it is being wrong in a way that costs the reader hours.</p>
+
+<h3>Building and replacing it</h3>
+<p><code>build_database</code> writes to a temp file in the destination directory, then <code>os.replace</code>s it into place — an interrupted download can never leave a half-written database where a scan will read it. A missing or corrupt file is not an error at scan time: <code>AdvisoryDB.available</code> is simply false, and the report says CVE matching used the built-in fingerprints only.</p>
+
+<div class="callout warn">
+<p><b>Freshness is yours to manage.</b> The database is a snapshot. The report records <code>built_at</code> in <code>metadata.advisory_db</code> and in the coverage table, so a reader can see how old the CVE knowledge was. Rebuild monthly, or before any engagement where version matching will be quoted.</p>
+</div>
+
+<h2><span class="num">10</span>Guidance: ATT&amp;CK, detection, next step</h2>
+
+<p>A severity tells a reader how bad something is. It does not tell the blue team what to watch for or the operator what to try next. <code>vulnscan/guidance.py</code> adds three fields to every finding, keyed by <code>rule_id</code>:</p>
+
+<table class="mid">
+<thead><tr><th>Field</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td><code>attack</code></td><td>MITRE ATT&amp;CK technique IDs with names, chosen from 36 named constants such as <code>T1190</code> Exploit Public-Facing Application, <code>T1021.001</code> RDP, <code>T1552.007</code> Container API, <code>T1610</code> Deploy Container. Labels for the report, not a claim of observed behaviour.</td></tr>
+<tr><td><code>detection</code></td><td>The telemetry that would show someone using the exposure — specific log lines, firewall events, TLS handshake patterns.</td></tr>
+<tr><td><code>next_step</code></td><td>A read-only confirmation an operator can run inside the agreed scope, e.g. re-issue <code>INFO</code> to see whether <code>CONFIG SET</code> is accepted.</td></tr>
+</tbody></table>
+
+<p>There are 57 entries. Two fallbacks make sure a finding is never rendered with empty guidance: <code>VS-CVE-*</code> gets a CVE-family default, and anything else gets the generic default. <code>provenance.guidance</code> in the JSON records which one applied — <code>rule</code>, <code>cve-family</code> or <code>default</code> — so it is visible when the tool is speaking generically.</p>
+
+<h3>Entry points</h3>
+<p><code>is_entry_point(finding)</code> answers the red-team question: could this be used without first winning a credential? Nine rules qualify (anonymous FTP, unauthenticated Redis/memcached/MongoDB, the Docker API over HTTP or TLS-detectable, an open Elasticsearch, an open admin console, kubelet), plus any <code>VS-CVE</code> that is high or critical <em>and</em> not tentative. A distro-backport guess is explicitly not an entry point until someone verifies it.</p>
+
+<h2><span class="num">11</span>The report: JSON, HTML, CSV, PDF</h2>
+
+<p>All four artifacts render from the one dict described in §3, so they cannot disagree about a fact. JSON is the contract; HTML is the deliverable; CSV is for the ticketing system; PDF is the same HTML printed.</p>
+
+<h3>The HTML report's nine sections</h3>
+<table class="mid">
+<thead><tr><th>Section</th><th>What it answers</th></tr></thead>
+<tbody>
+<tr><td><b>1. Scope and authorisation</b></td><td>Targets, port range, method, engagement reference — the part a client checks first.</td></tr>
+<tr><td><b>2. Coverage and provenance</b></td><td>Engine and version, exact command, privileges, NSE profile, skipped port states, unidentified services, app probes run, advisory database and its build date, the “not tested” list.</td></tr>
+<tr><td><b>3. Executive summary</b></td><td>KPI cards, a stacked severity bar, filter chips, the worst findings, and a prioritised remediation table grouped by rule (sorted by how many findings one action clears).</td></tr>
+<tr><td><b>4. Asset inventory</b></td><td>One row per open service: service, product, version, CPE, TLS, how it was identified.</td></tr>
+<tr><td><b>5. Per-host rollup</b></td><td>One page per host: what runs there, what is wrong, what to fix first.</td></tr>
+<tr><td><b>6. Findings</b></td><td>Severity sections; each finding is a card with badge row, evidence in a code block, ATT&amp;CK mapping, detection and next step.</td></tr>
+<tr><td><b>7. Recommendations</b></td><td>The actions, deduplicated across findings.</td></tr>
+<tr><td><b>8. Methodology and limits</b></td><td>How identification worked, and the seven things the scan did not test.</td></tr>
+<tr><td><b>9. Appendix — NSE output</b></td><td>Raw script output, so a reader can re-derive a conclusion.</td></tr>
+</tbody></table>
+<p>Printing is treated as a first-class output: A4 page setup, denser type, two finding cards per page, page breaks before per-host blocks, no shadows or interactive chips. The same 90-finding lab scan rendered 193 pages before that tuning and 101 after — the same content, without half-empty pages.</p>
+
+<h3>CSV: the asset inventory, fourteen columns</h3>
+<pre>host, ip, port, protocol, service, product, version, cpe,
+identified_by, tls, state, findings, critical, high</pre>
+<p>One row per open service. <code>identified_by</code> is <code>identity_source</code>, which is how a reader can tell a proven service from a port-table guess; the last three columns are counts joined from the findings, so the sheet can be sorted by risk without opening the HTML.</p>
+
+<h3>File naming, and why <code>-r</code> matters</h3>
+<p><code>report_stem</code> turns the report name into a slug: Unicode NFKD-folded to ASCII, lowercased, every run of non-alphanumerics to a single hyphen, trimmed, capped at 60 characters, with <code>vulnscan-</code> in front and the timestamp behind. <code>-r "ACME Q1 external"</code> yields <code>vulnscan-acme-q1-external_2026-11-06_120000.{json,html,nmap.xml}</code> and a PDF of the same stem. No name at all yields the old <code>vulnscan-report_&lt;stamp&gt;</code>.</p>
+
+<h3>PDF without a PDF library</h3>
+<p><code>pdf.html_to_pdf</code> finds Microsoft Edge first, then Chrome, then checks <code>PATH</code> for <code>chrome</code>/<code>chromium</code>, and runs <code>--headless --print-to-pdf</code> against a <code>file://</code> URL. That gives a pixel-faithful render of the styled HTML with no third-party package, and a clear error message when no browser exists. The default destination is the Downloads folder (falling back to Desktop, then home), overridable with <code>--pdf-dir</code> or saved config.</p>
+
+<h3>Raw evidence for reproducibility</h3>
+<p>When the nmap engine ran, its XML is written beside the report as <code>&lt;stem&gt;.nmap.xml</code> and its path recorded in <code>metadata.scan.raw_xml</code>. It is never embedded in the report itself: it is evidence a reviewer can re-parse, not a payload to ship to a client. Together with <code>coverage.command</code>, this is what lets someone else reproduce a finding months later.</p>
+
+<h2><span class="num">12</span>The CLI surface and its exit codes</h2>
+
+<p>Arguments are parsed once in <code>cli.build_parser</code>, in report order: <em>what to scan → how to detect → what to write</em>. Every flag below maps onto a specific piece of the pipeline, which is why this table doubles as a table of contents for the code.</p>
+
+<table class="tight">
+<thead><tr><th>Group</th><th>Flag</th><th>Effect inside the tool</th></tr></thead>
+<tbody>
+<tr><td rowspan="3"><b>Targets</b></td><td><code>-p, --ports</code></td><td><code>parse_ports</code>: <code>top</code> (60), <code>all</code> (65,535) or explicit list/ranges.</td></tr>
+<tr><td><code>-t, --timeout</code></td><td>Per-probe timeout (default 2.5&nbsp;s), threaded into <code>probe_port</code>, <code>run_checks</code> and the TLS handshakes.</td></tr>
+<tr><td><code>-c, --concurrency</code></td><td>Semaphore width for native scans (default 256); nmap's enrichment pass caps itself at <code>min(32, c)</code>.</td></tr>
+<tr><td rowspan="4"><b>Detection</b></td><td><code>--engine</code></td><td><code>auto</code> / <code>nmap</code> / <code>native</code>. Recorded as <code>requested_engine</code> in coverage.</td></tr>
+<tr><td><code>--nse</code></td><td><code>off</code> / <code>safe</code> (7 scripts) / <code>extended</code> (10). Never vuln, exploit, brute or DoS categories.</td></tr>
+<tr><td><code>--version-intensity</code></td><td>2–9, passed straight to nmap <code>-sV</code>. Unset means nmap's own default.</td></tr>
+<tr><td><code>--legacy-tls</code></td><td>Adds two pinned handshakes per TLS service; the only optional extra network cost.</td></tr>
+<tr><td rowspan="3"><b>CVE data</b></td><td><code>--db</code></td><td>Advisory database path for this scan (<code>$VULNSCAN_DB</code> or the cache default otherwise).</td></tr>
+<tr><td><code>--update-db</code></td><td>Download NVD feeds, rebuild, exit. Requires no target.</td></tr>
+<tr><td><code>--db-years</code></td><td>Years to include when rebuilding; default is the last six.</td></tr>
+<tr><td rowspan="4"><b>Report shape</b></td><td><code>--strict</code></td><td>Keep only <code>certain</code> findings; the suppressed count lands in coverage.</td></tr>
+<tr><td><code>-r, --report-name</code></td><td>Title, <code>metadata.report_name</code>, and the file stem of every artifact.</td></tr>
+<tr><td><code>--reference</code></td><td>Authorisation/SOW/ticket id, printed in the scope section and stored in coverage.</td></tr>
+<tr><td><code>--lab-exploits</code></td><td>Run the loopback-only proof checks; refuses any target argument.</td></tr>
+<tr><td rowspan="5"><b>Output</b></td><td><code>-o, --output-dir</code></td><td>Where HTML/JSON/CSV/raw XML land (default <code>out</code>).</td></tr>
+<tr><td><code>--pdf-dir</code></td><td>Where the PDF lands (default Downloads).</td></tr>
+<tr><td><code>--json | --csv | --html | --pdf [PATH]</code></td><td>Optional path override; bare flag means “automatic location”.</td></tr>
+<tr><td><code>--no-html | --no-json | --no-pdf</code></td><td>Opt out of an artifact that is otherwise written by default.</td></tr>
+<tr><td><code>-q, --quiet</code>, <code>--no-color</code></td><td>Suppress progress and ANSI colour; findings still print.</td></tr>
+<tr><td rowspan="4"><b>Config</b></td><td><code>--set-output-dir</code>, <code>--set-pdf-dir</code></td><td>Persist a default destination, then exit.</td></tr>
+<tr><td><code>--show-config</code>, <code>--reset-config</code></td><td>Print or clear the saved settings, then exit.</td></tr>
+<tr><td><code>--version</code></td><td><code>vulnscan 0.1.0</code>.</td></tr>
+<tr><td><b>Precedence</b></td><td>Per-run flag &gt; saved config (<code>~/.vulnscan/config.json</code>, or <code>$VULNSCAN_CONFIG_DIR</code>) &gt; built-in default. Only known keys are honoured, so a hand-edited file cannot inject settings.</td></tr>
+</tbody></table>
+
+<h3>Exit codes</h3>
+<table class="tight">
+<tbody>
+<tr><td><b>0</b></td><td>Scan completed with no findings — safe to gate CI on.</td></tr>
+<tr><td><b>1</b></td><td>Scan completed with at least one finding.</td></tr>
+<tr><td><b>2</b></td><td>Bad target/port spec, unknown engine, unavailable nmap with <code>--engine nmap</code>, a failed feed download, or <code>--lab-exploits</code> given targets. No report is written.</td></tr>
+</tbody></table>
+
+<h2><span class="num">13</span>Testing: how 304 tests keep the rules honest</h2>
+
+<p>Twelve files, 171 test methods, 304 discovered tests — the difference is <code>subTest</code>: the rule matrix expands one method into 116 cases, and a few table-driven tests do the same. <b>No test touches a real network target</b>; every one stands up a fake server, builds a <code>PortService</code> by hand, or feeds XML/JSON/fixtures straight into a parser.</p>
+
+<table class="mid">
+<thead><tr><th>File</th><th>Methods</th><th>What it pins down</th></tr></thead>
+<tbody>
+<tr><td><code>test_rule_matrix.py</code></td><td>4 → 120</td><td>A positive and a negative fixture for every one of the 58 rule IDs, plus four coverage checks: every rule has two cases, the matrix covers every ID, severity matches the rule, and a missing method fails the build. <b>You cannot ship a rule without a test.</b></td></tr>
+<tr><td><code>test_nmap_engine.py</code></td><td>35</td><td>XML parsing, port-list compaction to <code>-p-</code>/ranges, argv construction, <code>tcpwrapped</code> and weak-confidence handling, script-output filtering, NSE profiles, engine resolution and fallback.</td></tr>
+<tr><td><code>test_report_sections.py</code></td><td>30</td><td>Section order, scope and not-tested list, coverage command/privileges/scripts, a CVSS vector on every card, per-host page blocks, entry-points-first ordering, the raw-XML reference, and the CSV's shape, quoting and empty-scan behaviour.</td></tr>
+<tr><td><code>test_identity_rules.py</code></td><td>24</td><td>The identity model itself: conflicts, HTTP-riding families, strong vs weak claims, exposure gating.</td></tr>
+<tr><td><code>test_advisories.py</code></td><td>19</td><td>NVD ingestion, exact versions, range inclusivity, wildcard skipping, dedup per CVE, distro parsing, atomic build.</td></tr>
+<tr><td><code>test_guidance.py</code></td><td>14</td><td>Every rule has guidance; ATT&amp;CK IDs are well formed; fallbacks fire for CVE and unknown rules.</td></tr>
+<tr><td><code>test_cvss.py</code></td><td>12</td><td>Known base scores, scope change, malformed vectors, and the invariant that every curated vector lands in its rule's band.</td></tr>
+<tr><td><code>test_report_name.py</code></td><td>10</td><td><code>-r</code> propagation: title, JSON keys, HTML escaping, slug edge cases, PDF stem, real files on disk.</td></tr>
+<tr><td><code>test_unidentified.py</code></td><td>9</td><td>The reset path, <code>tcpwrapped</code> parsing, strong-claim rules and the report rows for unidentified services.</td></tr>
+<tr><td><code>test_sniffer.py</code></td><td>8</td><td>First-bytes classification and connection counts (1 per port, 2 for HTTPS on an odd port).</td></tr>
+<tr><td><code>test_probes.py</code></td><td>4</td><td>App-probe semantics: 200 with markers, 200 without, 401, and the wrong product on the right port.</td></tr>
+<tr><td><code>test_lab_exploits.py</code></td><td>2</td><td>The loopback-only proof checks stay loopback-only and read-only.</td></tr>
+</tbody></table>
+
+<h3>How a rule is tested</h3>
+<p>A case is a <code>PortService</code> built with the minimum evidence a rule needs, then an assertion on what <code>run_checks</code> returns:</p>
+<pre><span class="c"># positive: the port answers like Docker, so the finding must appear</span>
+DockerOn2375().expect(<span class="k">"VS-EXP-DOCKER"</span>, severity=<span class="k">"critical"</span>, confidence=<span class="k">"certain"</span>)
+<span class="c"># negative: same port, an HTTP server with no Docker markers</span>
+PlainHttpOn2375().expect_none(<span class="k">"VS-EXP-DOCKER"</span>)</pre>
+<p>The negative case is the important half. It is what stops the false positives described in §4 from coming back, and it is the reason a new rule costs two fixtures rather than one.</p>
+
+<h3>The live rig</h3>
+<p><code>tests/fake_services.py</code> starts deliberately vulnerable services on loopback (anonymous FTP, unauthenticated Redis, an open Docker API, a directory listing, a self-signed HTTPS endpoint, and more), and <code>tests/serve_report.py</code> serves a generated report at <code>127.0.0.1:8622</code> for visual review. Both are development tools, not part of the package.</p>
+
+<h2><span class="num">14</span>Recipes: extending the tool safely</h2>
+
+<p>Each recipe lists the files to touch and the checklist that means it is actually done. The checklist is not bureaucracy — the coverage tests will fail on a missing piece, which is the point.</p>
+
+<h3>1. Add a port-gated exposure rule</h3>
+<ol>
+  <li><code>checks.py → EXPOSURE_RULES[port]</code>: the 7-tuple <code>(rule_id, title, severity, _cwe(…), description, impact, remediation)</code>.</li>
+  <li><code>checks.py → EXPECTED_FAMILIES[port]</code>: the family set that makes the rule meaningful. This is what stops it firing on a contradicted port.</li>
+  <li><code>checks.py → SERVICE_FAMILIES</code>: add the service name(s) if the protocol is new.</li>
+  <li><code>guidance.py → GUIDANCE[rule_id]</code>: <code>_g((T…,), detection, next_step)</code>.</li>
+  <li><code>cvss.py → CURATED_VECTORS[rule_id]</code>: a vector whose score lands in the declared band.</li>
+  <li><code>tests/test_rule_matrix.py</code>: a positive case and a negative case.</li>
+  <li><code>scanner.py → PORT_SERVICES</code>: only if the fallback guess should know the port.</li>
+</ol>
+<p><b>Done when:</b> the matrix passes, <code>test_every_rule_vector_lands_in_its_rule_band</code> passes, and <code>test_guidance</code> finds an entry for the new ID.</p>
+
+<h3>2. Add an app-layer probe</h3>
+<ol>
+  <li><code>scanner.py → APP_PROBES[port] = (product, path)</code> and <code>APP_MARKERS[product] = (…)</code> — lowercase substrings unique to that product's response.</li>
+  <li><code>checks.py → APP_PROOF_PORTS[port] = product</code>, so the check can upgrade confidence from the result.</li>
+  <li>If the port must never receive an HTTP request otherwise, check <code>NON_HTTP_PORTS</code>/<code>HTTP_PORTS</code>.</li>
+  <li><code>tests/test_probes.py</code>: 200-with-markers, 200-without, 401/403, and wrong product.</li>
+</ol>
+<p><b>Done when:</b> a 200 with markers produces <code>certain</code>, a 401 produces <code>firm</code>, and a different product on the same port produces nothing.</p>
+
+<h3>3. Add a curated CVE fingerprint</h3>
+<ol>
+  <li><code>checks.py → check_fingerprints</code>: match on <code>svc.product</code> and an exact <code>ver</code> tuple; set <code>cve=[…]</code> and a reference URL.</li>
+  <li>Choose confidence honestly: <code>certain</code> only when the version is unambiguous and no backport is plausible, otherwise <code>firm</code> or <code>tentative</code>.</li>
+  <li>Matrix cases; the negative case is a nearby version that is <em>not</em> affected.</li>
+</ol>
+<p><b>Done when:</b> the CVE appears once (the advisory path de-dupes by CVE), and a neighbouring version produces no finding.</p>
+
+<h3>4. Teach the advisory database a new product</h3>
+<ol>
+  <li><code>advisories.py → PRODUCT_CPES</code>: add every (vendor, product) CPE pair the product appears under.</li>
+  <li><code>advisories.py → product_key</code>: map the detected product name onto the key, with the usual ordering traps (mariadb before mysql, postgres before postgresql).</li>
+  <li>Make sure <code>scanner._extract_product</code> actually produces that product name from a banner or header.</li>
+  <li><code>tests/test_advisories.py</code>: an ingestion case with a fake NVD document and a lookup case for a version in and out of range.</li>
+</ol>
+<p><b>Done when:</b> <code>--update-db</code> then a scan against a matching fixture yields a <code>VS-CVE-…</code> finding with NVD's own vector.</p>
+
+<h3>5. Add report content</h3>
+<ol>
+  <li>Put the fact in <code>_coverage</code> (or <code>build_report</code>) first — every artifact renders from that dict.</li>
+  <li>Render it in <code>render_html</code>; if it belongs in the inventory, add the column to <code>CSV_COLUMNS</code> and the row in <code>write_csv</code>.</li>
+  <li>Bump <code>REPORT_SCHEMA_VERSION</code> if a new key appears, and note it in the README.</li>
+  <li>Add a <code>test_report_sections</code> case.</li>
+</ol>
+<p><b>Done when:</b> JSON, HTML, CSV and the PDF all show the new fact, and the schema version reflects the addition.</p>
+
+<h2><span class="num">15</span>Failure modes and known limits</h2>
+
+<p>A tool is defined as much by how it fails as by what it finds. This section is the list you should be able to recite in a review, because every entry is a question a competent client will ask.</p>
+
+<table class="mid">
+<thead><tr><th>Symptom</th><th>Cause, and what the tool does about it</th></tr></thead>
+<tbody>
+<tr><td><b>Port open, no findings, no service</b></td><td>The listener accepted TCP then reset, went silent, or delays every reply (a tarpit). Recorded as <code>identification_error</code> and surfaced in coverage, the console and the CSV — never as a clean port.</td></tr>
+<tr><td><b>Everything filtered</b></td><td>A firewall, IPS or rate limiter on the path. Ports are counted in <code>skipped_ports</code>; the report's limits section says absence of a finding is not proof of absence.</td></tr>
+<tr><td><b>Service identified, version wrong</b></td><td>The banner lied or was rewritten by a proxy. Version matching is only as good as identification; no version, no CVE claim.</td></tr>
+<tr><td><b>CVE matched on a patched host</b></td><td>Distro backport. Mitigated by detecting the package revision and downgrading to <code>tentative</code> with an explicit note — not eliminated, because the tool cannot read package changelogs.</td></tr>
+<tr><td><b>CVE missed on a vulnerable host</b></td><td>The product is outside the ten advisory keys, the version is hidden, or the NVD entry has no usable range. The built-in fingerprints are the only fallback, and the report states which path was used.</td></tr>
+<tr><td><b>Web app seen, findings are generic</b></td><td>One <code>GET /</code> is not a web assessment. Enumeration, authentication and business logic are explicitly out of scope (see <code>_NOT_TESTED</code>).</td></tr>
+<tr><td><b>Host unreachable, scan “clean”</b></td><td>Targets are resolved once up front; an unresolvable name falls back to the literal string and produces no open ports. Check <code>hosts_up</code>/<code>hosts_down</code> in <code>metadata.scan</code> before believing a zero.</td></tr>
+<tr><td><b>Different results from another network</b></td><td>Vantage point is part of the result. Egress filtering, geo-blocking and CDN edges change what is reachable. <code>coverage.scan_source</code> records where the scan ran.</td></tr>
+<tr><td><b>IPv6-only service invisible</b></td><td>The native engine resolves <code>AF_INET</code> only. A known limitation, not a policy: it is stated here so it is never a surprise in a report.</td></tr>
+<tr><td><b>UDP services invisible</b></td><td>No UDP scan by design (DNS, NTP, SNMP, TFTP are common gaps). The limits section says so in every report.</td></tr>
+<tr><td><b>Certificate details missing</b></td><td>DER decoding uses CPython's private <code>_test_decode_cert</code>. On failure the TLS checks fall back to handshake facts and the certificate rules simply do not fire.</td></tr>
+<tr><td><b>nmap missing on the engagement box</b></td><td><code>auto</code> falls back and says why; <code>--engine nmap</code> exits 2 rather than scanning with something else.</td></tr>
+</tbody></table>
+
+<h3>Three ways a finding can be wrong</h3>
+<ol>
+  <li><b>Wrong identification.</b> The port was named from a table rather than the wire. Mitigation: family gating, confidence labels, and the contradicted-port suppression in §4.</li>
+  <li><b>Right identification, wrong version.</b> Banner rewriting, backports, or a patch level the banner does not mention. Mitigation: version ranges instead of exact matches, distro awareness, and tentative confidence.</li>
+  <li><b>Right facts, wrong judgement.</b> The rule's condition does not actually mean what its severity implies. Mitigation: the rule matrix's negative case, the CVSS band invariant, and prose that states the condition plainly.</li>
+</ol>
+
+<h2><span class="num">16</span>Study plan and self-test</h2>
+
+<p>Seven sittings, each with one file to read closely and questions you should be able to answer out loud before moving on. Commands are the ones that make the behaviour visible.</p>
+
+<div class="sit"><div class="t">Sitting 1 — the shape of it (45 min)</div>
+<p>Read <code>vulnscan/cli.py</code> end to end, then <code>vulnscan/targets.py</code>. Run <code>python3 -m vulnscan scanme.org -p 22,80 --no-pdf</code> and follow the console output against the code.</p>
+<p><b>Then answer:</b> what is the exit code when a scan finds nothing, and why is that the right choice for CI? Where is the report stem decided, and what happens with <code>-r "???"</code>? Which flag would you use to reuse a previous output folder without retyping it?</p></div>
+
+<div class="sit"><div class="t">Sitting 2 — the data model (40 min)</div>
+<p>Read the <code>PortService</code> dataclass and <code>report._service_dict</code>, then <code>report.build_report</code>.</p>
+<p><b>Then answer:</b> which four fields can be empty on an open service, and what does each emptiness mean? Why are <code>tls</code>, <code>http</code> and <code>scripts</code> omitted from the JSON when empty? Where would you add one new fact about a host so all four artifacts show it?</p></div>
+
+<div class="sit"><div class="t">Sitting 3 — identity (60 min, the important one)</div>
+<p>Read §4 above with <code>checks.py</code> lines 60–220 open: <code>SERVICE_FAMILIES</code>, <code>EXPECTED_FAMILIES</code>, <code>claims_conflict</code>, <code>_exposure_confidence</code>. Then read <code>tests/test_identity_rules.py</code>.</p>
+<p><b>Then answer:</b> why does a strong identity outside the expected set return <code>None</code> rather than a low-confidence finding? Why is <code>docker</code> not considered a conflict with <code>http</code>? What exactly makes an nmap claim strong, and why is <code>tcpwrapped</code> excluded even at <code>conf 8</code>?</p></div>
+
+<div class="sit"><div class="t">Sitting 4 — engines and evidence (60 min)</div>
+<p>Read <code>engines/nmap.py</code> and the identification half of <code>scanner.py</code> (<code>probe_port</code>, <code>classify_first_bytes</code>, <code>collect_evidence</code>). Run the same scan twice: <code>--engine nmap</code> and <code>--engine native</code>, and compare <code>coverage</code> in the two JSONs.</p>
+<p><b>Then answer:</b> how many TCP connections does a native probe of an SSH port use, and where is that asserted? What does <code>guess_names=False</code> change? Why is the raw nmap XML written beside the report instead of embedded in it?</p></div>
+
+<div class="sit"><div class="t">Sitting 5 — judgement (60 min)</div>
+<p>Read <code>checks.py</code> in rule order, then <code>cvss.py</code>, then <code>guidance.py</code>'s structure (not all 57 entries). Run <code>python3 -m unittest tests.test_cvss</code>.</p>
+<p><b>Then answer:</b> why are severity and CVSS band two separate fields, and what keeps them from disagreeing? Which rule would you expect to be <code>tentative</code> even with a perfect banner, and why? What does <code>entry_point</code> exclude on purpose?</p></div>
+
+<div class="sit"><div class="t">Sitting 6 — the database (45 min)</div>
+<p>Read <code>advisories.py</code> fully, then <code>tests/test_advisories.py</code>. If you want the real thing, run <code>python3 -m vulnscan --update-db --db-years 2024</code> into a scratch path and query it with <code>sqlite3</code>.</p>
+<p><b>Then answer:</b> what does a row with <code>exact_version</code> and no range mean? Why is <code>start_inclusive</code> stored separately from <code>introduced</code>? What happens to an NVD entry whose CPE says <code>version="*"</code> with no range? How does the report know the database's age?</p></div>
+
+<div class="sit"><div class="t">Sitting 7 — prove it (60 min)</div>
+<p>Read <code>tests/test_rule_matrix.py</code> and one rule's two cases. Then pick one rule and trace a single fixture from <code>PortService</code> to rendered HTML.</p>
+<p><b>Then answer:</b> what fails if you add a rule ID and no test? What is the negative case protecting against? Which command regenerates all four artifacts from one scan?</p></div>
+
+<h3>Self-test (answers follow)</h3>
+<div class="qa"><div class="q">1. A host has 3389 open and identified as SSH. Why is there no RDP finding?</div><div class="a">The identity is strong and its family (<code>ssh</code>) is not in <code>EXPECTED_FAMILIES[3389]</code>, so <code>_exposure_confidence</code> returns <code>None</code> and the finding is never created. There is also no SSH exposure rule, so nothing is claimed in its place.</div></div>
+<div class="qa"><div class="q">2. Is a <code>tentative</code> finding a warning about scanner uncertainty or about the host?</div><div class="a">Both, precisely: it means something is listening on a port whose expected protocol could not be proved. It is still reported because suppression here would hide real exposure.</div></div>
+<div class="qa"><div class="q">3. The scan says “no advisory database”. Is that a bug or a configuration state?</div><div class="a">A deliberate state. Scans never download anything; <code>--update-db</code> builds the file. The absence is stated in the console, in <code>metadata.advisory_db</code> and in the coverage table so a reader knows CVE matching was fingerprints-only.</div></div>
+<div class="qa"><div class="q">4. Which engine's identification wins when both run?</div><div class="a">nmap's, unless it is weak (<code>conf &lt; 8</code>, <code>unknown</code>, trailing <code>?</code>). Then the evidence pass may rename the port from what the service actually sent.</div></div>
+<div class="qa"><div class="q">5. Why is regreSSHion's finding <code>tentative</code> when the banner clearly matches?</div><div class="a">Because distributions backport the fix without changing the upstream version. The banner proves the version, not the patch level, so the rule says so instead of overclaiming.</div></div>
+<div class="qa"><div class="q">6. What tells a reader which detector actually ran?</div><div class="a"><code>coverage.engine</code>, <code>engine_version</code>, <code>requested_engine</code>, <code>fallback_reason</code>, <code>argv</code> and <code>command</code> in the JSON, and the coverage table in the HTML.</div></div>
+<div class="qa"><div class="q">7. Why is <code>-p all</code> no longer a false-positive factory?</div><div class="a">Because a port only selects candidate rules; firing requires a protocol family match or an explicitly unidentified port, and the latter is labelled <code>tentative</code>.</div></div>
+<div class="qa"><div class="q">8. Severity says high; the CVSS block says 5.3. What went wrong?</div><div class="a">A rule bug: the curated vector does not match the declared band. <code>test_every_rule_vector_lands_in_its_rule_band</code> is designed to catch it in CI rather than in a report.</div></div>
+<div class="qa"><div class="q">9. What does one connection per port buy you?</div><div class="a">Fewer log lines and alerts on the target, less chance of tripping rate limits, and shorter scans. It is asserted, not assumed: <code>tests/test_sniffer.py</code> counts connections.</div></div>
+<div class="qa"><div class="q">10. In the CSV, what is <code>identified_by</code> for, and which value should worry you?</div><div class="a">It is <code>identity_source</code>. <code>port</code> means the name came from the port table, so the row is a guess; <code>banner</code>/<code>http</code>/<code>nmap</code> mean something proved it.</div></div>
+<div class="qa"><div class="q">11. Can a rule ship without tests?</div><div class="a">No. The matrix has a coverage check that fails when an ID has no positive or no negative case.</div></div>
+<div class="qa"><div class="q">12. Why store <code>start_inclusive</code> when the column already has <code>introduced</code>?</div><div class="a">NVD distinguishes <code>versionStartIncluding</code> from <code>versionStartExcluding</code>. The version string alone cannot express which one applied, so the flag is stored beside it.</div></div>
+<div class="qa"><div class="q">13. What happens to an NVD entry with a bare wildcard version and no range?</div><div class="a">It is skipped at ingestion: with no range and no fixed release it cannot be graded, and a guess would be indistinguishable from a fact.</div></div>
+<div class="qa"><div class="q">14. List the seven things every report says it did not test.</div><div class="a">UDP/SCTP and ports outside the list; authentication, credential guessing, exploitation and DoS; application business logic and anything behind a login; services filtered by firewall/IDS/rate limiting; TLS 1.0/1.1 unless <code>--legacy-tls</code>; vulnerabilities needing a version the banner does not reveal; NSE scripts outside the selected profile.</div></div>
+<div class="qa"><div class="q">15. Why does <code>--strict</code> print a suppressed count?</div><div class="a">Because silent suppression reads as a clean host. The count in <code>coverage.suppressed_by_strict</code> keeps the filter honest.</div></div>
+<div class="qa"><div class="q">16. What happens with <code>--engine nmap</code> on a machine without nmap?</div><div class="a">Exit 2 with an explicit message. It never quietly falls back — that is what <code>auto</code> is for.</div></div>
+
+<h2><span class="num">17</span>Glossary</h2>
+<table class="tight">
+<tbody>
+<tr><td><b>Banner</b></td><td>The opening bytes a service sends, read without being asked (server-first) or after one read-only probe.</td></tr>
+<tr><td><b>Backport</b></td><td>A security fix applied to an older upstream version by a distributor. The version number does not change, which is why distro package revisions downgrade CVE findings to tentative.</td></tr>
+<tr><td><b>CPE</b></td><td>Common Platform Enumeration, NVD's naming scheme for products (<code>cpe:2.3:a:apache:http_server:2.4.49:…</code>).</td></tr>
+<tr><td><b>CIDR</b></td><td>Address range notation (<code>10.0.0.0/24</code>); targets larger than 1024 hosts are refused rather than truncated.</td></tr>
+<tr><td><b>Confidence</b></td><td>How much was proved: <code>certain</code> (the service answered), <code>firm</code> (identity proven, consequence inferred), <code>tentative</code> (nothing proved the protocol).</td></tr>
+<tr><td><b>Coverage</b></td><td>The report block listing what actually ran: engine, argv, privileges, scripts, skipped states, unidentified ports, advisory status, and what was not tested.</td></tr>
+<tr><td><b>CVSS vector</b></td><td>A compact string of metric values (<code>AV:N/AC:L/…</code>) from which the base score is computed. The vector is stored; the score is derived.</td></tr>
+<tr><td><b>Entry point</b></td><td>A finding a red team could use without first winning a credential — anonymous access or an unauthenticated management API.</td></tr>
+<tr><td><b>Filtered / closed / open</b></td><td>Timed out or blocked / actively refused / accepted the connection. Only <code>open</code> is investigated; the others are counted.</td></tr>
+<tr><td><b>First-bytes classification</b></td><td>Naming a protocol from what the service actually sent, before any port-table guess is allowed.</td></tr>
+<tr><td><b>NSE</b></td><td>Nmap Scripting Engine. Only scripts nmap tags <code>safe</code> (plus read-only <code>intrusive</code> ones in <code>extended</code>) are ever run.</td></tr>
+<tr><td><b>NVD</b></td><td>National Vulnerability Database; the source of the offline advisory database's CVE JSON 2.0 feeds.</td></tr>
+<tr><td><b>Port-table guess</b></td><td>A service name taken from a port number rather than from the wire. Recorded as <code>identity_source: "port"</code> and treated as weak everywhere.</td></tr>
+<tr><td><b>Provenance</b></td><td>Where a fact came from — engine, script, advisory build, guidance source, CVSS source — carried in the report so claims can be traced.</td></tr>
+<tr><td><b>Service family</b></td><td>The normalised protocol group (<code>http</code>, <code>redis</code>, <code>docker</code>, …) that rules compare against. 31 families from 52 service names.</td></tr>
+<tr><td><b>Tarpit</b></td><td>A listener that accepts connections and then stalls or resets, producing <code>tcpwrapped</code> in nmap and an identification gap here.</td></tr>
+<tr><td><b>tcpwrapped</b></td><td>nmap's word for “the TCP handshake completed and then it said nothing”. Not a service name, and never treated as one.</td></tr>
+<tr><td><b>Weak identity</b></td><td>An identification that nothing proved: the port table, nmap below <code>conf 8</code>, an <code>unknown</code> or <code>tcpwrapped</code> name.</td></tr>
+</tbody></table>
+
+<footer>
+vulnscan 0.1.0 · internals handbook · 6 November 2026 · every figure read from the code in this repository. The authoritative sources remain <code>vulnscan/checks.py</code> (judgement), <code>vulnscan/scanner.py</code> (evidence) and <code>vulnscan/report.py</code> (what a reader sees).
+</footer>
+</body>
+</html>

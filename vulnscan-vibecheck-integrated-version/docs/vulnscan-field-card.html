@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vulnscan — field card</title>
+<style>
+  @page { size: A4; margin: 9mm 9mm 8mm 9mm; }
+  :root {
+    --ink: #12161b;
+    --muted: #5f6b78;
+    --rule: #dde3e9;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f1;
+    --code-bg: #11161c;
+    --code-ink: #e9eff6;
+    --amber: #b45309;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    font-size: 8.9pt; line-height: 1.34;
+  }
+  code, pre { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+  header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    border-bottom: 2px solid var(--ink); padding-bottom: 2mm; margin-bottom: 3mm;
+  }
+  h1 { font-size: 23pt; margin: 0; letter-spacing: -0.02em; font-weight: 800; line-height: 1; }
+  h1 span { color: var(--accent); }
+  .tag { font-size: 7.2pt; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .tag b { color: var(--ink); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; }
+  .panel { margin-bottom: 3mm; break-inside: avoid; }
+  .panel h2 {
+    font-size: 8.8pt; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 1.5mm; font-weight: 800;
+    display: flex; align-items: center; gap: 1.6mm;
+  }
+  .panel h2::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    padding: 2.3mm 2.9mm; border-radius: 1.4mm; margin: 0;
+    font-size: 8.05pt; line-height: 1.48; overflow-wrap: anywhere;
+  }
+  pre .c { color: #8fa3b8; }
+  pre .hl { color: #5eead4; }
+
+  p { margin: 0 0 1.7mm; }
+  p code, td code, li code {
+    background: var(--accent-soft); color: #0b4f4a;
+    padding: 0 1.1mm; border-radius: .7mm; font-size: 8.3pt;
+  }
+  ul { margin: 0; padding-left: 3.4mm; }
+  li { margin-bottom: .5mm; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 8.05pt; }
+  td { padding: 1.05mm 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td:first-child { width: 38%; padding-right: 2mm; }
+  td:first-child code { background: none; padding: 0; color: var(--ink); font-weight: 600; font-size: 8.3pt; }
+
+  .note { color: var(--muted); font-size: 7.8pt; }
+  .warn { color: var(--amber); font-weight: 700; }
+
+  .strip {
+    margin-top: .5mm; border-top: 2px solid var(--ink); padding-top: 1.6mm;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 4mm;
+  }
+  .strip h3 {
+    font-size: 7.7pt; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 1mm; font-weight: 700;
+  }
+  .strip div { font-size: 7.5pt; line-height: 1.3; }
+  .strip b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="tag">vulnscan 0.1.0 · field card</div>
+    <h1>Engagement <span>commands</span></h1>
+  </div>
+  <div class="tag" style="text-align:right">
+    <b>python3 -m vulnscan</b> from the repo root<br>
+    authorised targets only
+  </div>
+</header>
+
+<div class="cols">
+
+  <!-- LEFT COLUMN -->
+  <div>
+    <div class="panel">
+      <h2>The scan</h2>
+      <pre>python3 -m vulnscan 10.0.0.5              <span class="c"># everything, automatic</span>
+python3 -m vulnscan 10.0.0.5 --no-pdf     <span class="c"># skip slow PDF render</span>
+python3 -m vulnscan 10.0.0.0/29 -q        <span class="c"># range, quiet</span></pre>
+      <p class="note">Defaults: 60 common ports · engine <code>auto</code> · HTML+JSON to <code>out/</code> · PDF to Downloads · exit <code>1</code> if findings.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Client deliverable</h2>
+      <pre>python3 -m vulnscan 10.0.0.5 \
+  -p 22,80,443,3306,6379 --strict \
+  --reference "SOW-2026-014" --csv \
+  -r "ACME Q1 external"</pre>
+      <p class="note"><code>--strict</code> = proved findings only; the suppressed count is still printed in the coverage section. <code>--csv</code> = asset inventory (host, port, service, version, CPE).</p>
+    </div>
+
+    <div class="panel">
+      <h2>Ports</h2>
+      <table>
+        <tbody>
+        <tr><td><code>-p top</code></td><td>60 common ports (default)</td></tr>
+        <tr><td><code>-p all</code></td><td>1–65535, minutes per host</td></tr>
+        <tr><td><code>-p 8000-8100</code></td><td>inclusive range</td></tr>
+        <tr><td><code>-p 22,80,8000-8100</code></td><td>lists and ranges mix</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Targets</h2>
+      <pre>python3 -m vulnscan a.example.com
+python3 -m vulnscan 10.0.0.5,10.0.0.6
+python3 -m vulnscan 10.0.0.0/29        <span class="c"># max 1024 hosts</span></pre>
+      <p class="note">Hostnames, IPv4, single IPv6, IPv4 CIDR. Refuses ranges over 1024 addresses.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Engines</h2>
+      <pre>--engine auto      <span class="c"># nmap if installed, else native</span>
+--engine native    <span class="c"># stdlib only, no nmap</span>
+--engine nmap      <span class="c"># require nmap, fail if absent</span></pre>
+      <p class="note">Native classifies the first bytes on the wire, one connection per port. nmap delegates to <code>-sV</code> plus scripts.</p>
+    </div>
+
+    <div class="panel">
+      <h2>nmap evidence</h2>
+      <table>
+        <tbody>
+        <tr><td><code>--nse safe</code></td><td>default · safe-tagged scripts only</td></tr>
+        <tr><td><code>--nse extended</code></td><td>+ ssl-enum-ciphers, ssh-auth-methods, http-enum</td></tr>
+        <tr><td><code>--nse off</code></td><td>identification only</td></tr>
+        <tr><td><code>--version-intensity 7</code></td><td>2–9, higher finds more</td></tr>
+        </tbody>
+      </table>
+      <p class="note warn">Vuln, exploit, DoS and brute script categories are never run, under any profile.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Reading confidence</h2>
+      <table>
+        <tbody>
+        <tr><td><code>certain</code></td><td>protocol-level proof on the wire; safe to quote to a client</td></tr>
+        <tr><td><code>firm</code></td><td>strong signal, not directly proved; verify before you report it</td></tr>
+        <tr><td><code>tentative</code></td><td>version or path hint only, or a distro build that may be backported</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Every finding carries the evidence that produced it — the request sent and the response received — plus its CVSS vector when one is known.</p>
+    </div>
+
+    <div class="panel">
+      <h2>When a scan looks wrong</h2>
+      <ul>
+        <li><b>Fell back to native</b> — nmap not on <code>PATH</code>; coverage section says so.</li>
+        <li><b>No PDF</b> — needs Edge or Chrome; use <code>--no-pdf</code> and print the HTML.</li>
+        <li><b>Slow</b> — avoid <code>-p all</code>; try <code>-t 1.0</code> and fewer ports.</li>
+        <li><b>All timeouts</b> — filtered host; raise <code>-t</code>, lower <code>-c</code>.</li>
+        <li><b>Odd CVE</b> — read the backport note; <code>--update-db</code> for current ranges.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div>
+    <div class="panel">
+      <h2>Speed &amp; network</h2>
+      <table>
+        <tbody>
+        <tr><td><code>-t 1.0</code></td><td>per-probe timeout (default 2.5s)</td></tr>
+        <tr><td><code>-c 512</code></td><td>concurrent probes (default 256)</td></tr>
+        <tr><td><code>--legacy-tls</code></td><td>also test TLS 1.0/1.1</td></tr>
+        <tr><td><code>-q --no-color</code></td><td>clean logs for CI</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Artifacts</h2>
+      <pre>-o ./reports             <span class="c"># HTML + JSON</span>
+--pdf-dir ./reports      <span class="c"># PDF location</span>
+-r "ACME Q1 external"    <span class="c"># name report + files</span>
+--html r.html --json r.json --pdf r.pdf
+--csv assets.csv         <span class="c"># inventory rows</span>
+--no-html --no-json      <span class="c"># PDF only</span></pre>
+    </div>
+
+    <div class="panel">
+      <h2>CVE database (offline)</h2>
+      <pre>python3 -m vulnscan --update-db                   <span class="c"># last 6 years, NVD</span>
+python3 -m vulnscan --update-db --db-years 2021,2024
+python3 -m vulnscan host --db ./advisories.sqlite3
+VULNSCAN_DB=/path/db.sqlite3 python3 -m vulnscan host</pre>
+      <p class="note">Only <code>--update-db</code> uses the network. Cache at <code>~/.cache/vulnscan</code>. Range matching; distro builds downgraded to <i>tentative</i> for backports.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Saved defaults</h2>
+      <pre>--set-output-dir ./reports --set-pdf-dir ./reports
+--show-config     --reset-config</pre>
+    </div>
+
+    <div class="panel">
+      <h2>Lab / proof checks</h2>
+      <pre>python3 -m vulnscan 127.0.0.1 -p 21,22,23,25,6379
+python3 -m vulnscan --lab-exploits   <span class="c"># no target argument</span></pre>
+      <p class="note">Loopback-only, non-destructive, fixed proofs. Passing a target exits <code>2</code>.</p>
+    </div>    <div class="panel">
+      <h2>Recipes</h2>
+      <pre><span class="c"># CI gate</span>
+python3 -m vulnscan 10.0.0.5 -q --no-pdf \
+  || echo "findings present"
+
+<span class="c"># no nmap, fast LAN</span>
+python3 -m vulnscan 10.0.0.5 \
+  -p 1-1024 --engine native -t 1.5
+
+<span class="c"># deep single-host pass</span>
+python3 -m vulnscan app.example.com \
+  -p all --engine nmap --nse extended \
+  --version-intensity 7 -c 128 \
+  --reference "SOW-2026-014"</pre>
+    </div>
+
+    <div class="panel">
+      <h2>Triage order</h2>
+      <ul>
+        <li>Unauthenticated data stores — <code>6379</code> Redis, <code>27017</code> Mongo, <code>9200</code> Elasticsearch.</li>
+        <li>Control planes — <code>2375/2376</code> Docker, <code>10250</code> kubelet, <code>2379</code> etcd.</li>
+        <li>Remote access — <code>3389</code> RDP, <code>5900</code> VNC, <code>22</code> SSH auth methods.</li>
+        <li>Exposure hygiene — legacy TLS, expired certificates, version EOL.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2>Before it goes to the client</h2>
+      <ul>
+        <li><code>--strict</code> run is the deliverable; the loose run stays in your notes.</li>
+        <li><code>--reference</code> matches the SOW; scope section names the same targets.</li>
+        <li>Coverage section read: what was scanned, what was suppressed, was the CVE DB present.</li>
+        <li>Inventory CSV attached for their asset register.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2>What lands in the report</h2>
+      <ul>
+        <li>Scope, engine provenance, exact command line, any fallback reason.</li>
+        <li>Per-service identity: product, version, CPE, and whether it came from a banner, a handshake or a port guess.</li>
+        <li>Findings with severity, confidence, evidence, CVSS vector, plus per-host rollup.</li>
+        <li>Coverage: ports scanned, suppressed counts, advisory DB present.</li>
+        <li>Raw nmap XML beside the report (<code>*.nmap.xml</code>) when nmap ran.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="strip">
+  <div>
+    <h3>Exit codes</h3>
+    <b>0</b> clean · <b>1</b> findings · <b>2</b> bad spec
+  </div>
+  <div>
+    <h3>On disk</h3>
+    <code>out/</code> HTML+JSON · PDF Downloads
+  </div>
+  <div>
+    <h3>Confidence</h3>
+    <code>--strict</code> = proved only
+  </div>
+  <div>
+    <h3>Never</h3>
+    no auth · no exploit payloads
+  </div>
+</div>
+
+</body>
+</html>

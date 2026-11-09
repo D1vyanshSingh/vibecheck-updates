@@ -32,3 +32,9 @@ supabase/temp/
 # local test artifacts, never committed
 _local/
 backend/sources/
+
+# vulnscan (URL scanner) caches and generated reports
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+vulnscan-vibecheck-integrated-version/out/
