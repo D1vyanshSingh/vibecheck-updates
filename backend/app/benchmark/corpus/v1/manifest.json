@@ -1,0 +1,27 @@
+{
+  "version": "v1",
+  "description": "Three deliberate defects planted in a tiny tree. Every case below is present in files/ exactly once, so precision and recall are computed against a known answer rather than an estimate.",
+  "cases": [
+    {
+      "id": "aws-key-in-source",
+      "file": "app/settings.py",
+      "rule": "vibecheck.secret.aws_access_key",
+      "severity": "critical",
+      "note": "An AWS access key id literal committed in application settings."
+    },
+    {
+      "id": "eval-of-request-data",
+      "file": "app/handlers.py",
+      "rule": "vibecheck.code.eval",
+      "severity": "high",
+      "note": "eval() applied to a request value."
+    },
+    {
+      "id": "service-role-in-client-bundle",
+      "file": "web/client.ts",
+      "rule": "vibecheck.code.service_role_client",
+      "severity": "critical",
+      "note": "A NEXT_PUBLIC_ variable naming a service-role key, which Vite/Next would bundle for the browser."
+    }
+  ]
+}

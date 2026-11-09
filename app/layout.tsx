@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { SiteHeader } from "@/components/navigation/SiteHeader";
-import { SiteFooter } from "@/components/navigation/SiteFooter";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -24,7 +22,7 @@ const jetbrains = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
-const siteUrl = "https://vibecheck.dev";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vibecheck.dev";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -74,6 +72,11 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/**
+ * Root layout: fonts, tokens and document shell only.
+ * Chrome lives in the route groups — (site) keeps the marketing header and
+ * footer, (app) gets the console shell, (auth) gets the centred card.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -82,17 +85,7 @@ export default function RootLayout({
       lang="en"
       className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrains.variable}`}
     >
-      <body className="min-h-screen bg-void font-sans antialiased">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[120] focus:border focus:border-lavender focus:bg-void focus:px-4 focus:py-3 focus:text-xs focus:uppercase focus:tracking-[0.2em] focus:text-fog"
-        >
-          Skip to content
-        </a>
-        <SiteHeader />
-        <main id="main">{children}</main>
-        <SiteFooter />
-      </body>
+      <body className="min-h-screen bg-void font-sans antialiased">{children}</body>
     </html>
   );
 }

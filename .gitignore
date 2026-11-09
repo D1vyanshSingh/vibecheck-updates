@@ -15,3 +15,20 @@ next-env.d.ts
 .freebuff/
 
 .review/
+
+# Recovery artifacts: preserved locally, never committed.
+_recovery/
+backend/.tools/
+backend/sources/
+backend/tmp/
+backend/uploads/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.venv/
+backend/.pytest_cache/
+supabase/.temp/
+supabase/temp/
+
+# local test artifacts, never committed
+_local/
+backend/sources/
