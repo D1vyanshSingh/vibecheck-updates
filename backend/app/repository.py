@@ -150,6 +150,10 @@ class ScanRepository:
         )
         return rows[0] if isinstance(rows, list) else rows
 
+    async def create_benchmark(self, values: dict[str, Any]) -> dict[str, Any]:
+        rows = await self._db.insert("benchmark_runs", values)
+        return rows[0] if isinstance(rows, list) else rows
+
     async def audit(self, values: dict[str, Any]) -> None:
         try:
             await self._db.insert("audit_events", values, prefer="return=minimal")

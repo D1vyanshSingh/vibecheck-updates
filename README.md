@@ -29,7 +29,7 @@ npm run typecheck
 
 cd backend
 pip install -r requirements.txt
-python -m pytest -q          # 77 tests
+python -m pytest -q          # 96 tests
 uvicorn app.api:app --reload # http://localhost:8000
 python -m app.worker --once  # claim one batch of scan jobs
 ```

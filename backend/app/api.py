@@ -48,6 +48,18 @@ class UrlAssessmentCreate(BaseModel):
     source_url: str = Field(min_length=4, max_length=2048)
 
 
+class GitHubImportCreate(BaseModel):
+    project_id: str = Field(min_length=1, max_length=64)
+    owner: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._-]+$")
+    repo: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._-]+$")
+    ref: str | None = Field(default=None, max_length=200, pattern=r"^[A-Za-z0-9._/-]+$")
+
+
+class BenchmarkCreate(BaseModel):
+    corpus_version: str = Field(default="v1", pattern=r"^[a-z0-9._-]{1,32}$")
+    kinds: list[str] | None = None
+
+
 class ReportCreate(BaseModel):
     report_type: Literal["client", "technical"] = "technical"
     version: int = Field(default=1, ge=1, le=99)
@@ -250,6 +262,68 @@ async def create_report(
         version=body.version,
     )
     return {"report": report}
+
+
+@app.get("/v1/integrations/omniroute")
+async def omniroute_status() -> dict[str, Any]:
+    """Configured is not the same as reachable; this reports both."""
+    from app.ai.omniroute import OmniRoute
+
+    return await OmniRoute().health()
+
+
+@app.get("/v1/integrations/github")
+async def github_status() -> dict[str, Any]:
+    """Honest capability report; never says "connected" without credentials."""
+    return {
+        "configured": bool(settings.github_app_id and settings.github_private_key),
+        "app_slug": settings.github_app_slug or None,
+        "webhook_secret_configured": bool(settings.github_webhook_secret),
+        "scope": "read-only repository contents",
+    }
+
+
+@app.post("/v1/workspaces/{workspace_id}/integrations/github/import", status_code=status.HTTP_201_CREATED)
+async def import_github_repository(
+    workspace_id: str,
+    body: GitHubImportCreate,
+    principal: Principal = Depends(get_current_user),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    return await service.import_github_repository(
+        principal,
+        workspace_id=workspace_id,
+        project_id=body.project_id,
+        owner=body.owner,
+        repo=body.repo,
+        ref=body.ref,
+    )
+
+
+@app.post("/v1/workspaces/{workspace_id}/benchmarks", status_code=status.HTTP_201_CREATED)
+async def run_benchmark(
+    workspace_id: str,
+    body: BenchmarkCreate,
+    principal: Principal = Depends(get_current_user),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    """Score the versioned corpus with the scanners this worker actually has."""
+    return await service.run_benchmark(
+        principal,
+        workspace_id=workspace_id,
+        corpus_version=body.corpus_version,
+        kinds=body.kinds,
+    )
+
+
+@app.get("/v1/workspaces/{workspace_id}/benchmarks")
+async def list_benchmarks(
+    workspace_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    principal: Principal = Depends(get_current_user),
+    service: ScanService = Depends(get_scan_service),
+) -> dict[str, Any]:
+    return await service.list_benchmarks(principal, workspace_id=workspace_id, limit=limit)
 
 
 @app.get("/v1/scans/{scan_id}/analysis")

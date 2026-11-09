@@ -421,6 +421,35 @@ export function createApiClient(supabase: SupabaseClient) {
       }>("GET", `/v1/findings/${encodeURIComponent(findingId)}`);
     },
 
+    async importGitHubRepository(
+      workspaceId: string,
+      projectId: string,
+      owner: string,
+      repo: string,
+      ref?: string,
+    ) {
+      return authed<{ source: SourceRecord; scan: ScanRecord }>(
+        "POST",
+        `/v1/workspaces/${encodeURIComponent(workspaceId)}/integrations/github/import`,
+        {
+          body: JSON.stringify({
+            project_id: projectId,
+            owner,
+            repo,
+            ref: ref?.trim() ? ref.trim() : undefined,
+          }),
+        },
+      );
+    },
+
+    async runBenchmark(workspaceId: string, corpusVersion = "v1") {
+      return authed<{ run: Record<string, unknown>; result: Record<string, unknown> }>(
+        "POST",
+        `/v1/workspaces/${encodeURIComponent(workspaceId)}/benchmarks`,
+        { body: JSON.stringify({ corpus_version: corpusVersion }) },
+      );
+    },
+
     async assessUrl(workspaceId: string, projectId: string, sourceUrl: string) {
       return authed<AssessmentResult>(
         "POST",

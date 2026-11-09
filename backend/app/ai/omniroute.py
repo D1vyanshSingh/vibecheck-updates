@@ -98,6 +98,63 @@ class OmniRoute:
             usage=body.get("usage") or {},
         )
 
+    async def health(self) -> dict[str, Any]:
+        """Probe the gateway. "Configured" and "reachable" are different facts."""
+        base = {
+            "configured": self.configured,
+            "base_url_set": bool(self.base_url),
+            "api_key_set": bool(self.api_key),
+            "model": self.model,
+        }
+        if not self.configured:
+            return {
+                **base,
+                "reachable": None,
+                "detail": "OMNIROUTE_BASE_URL and OMNIROUTE_API_KEY are not both set.",
+            }
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    f"{self.base_url}/v1/models",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                )
+        except httpx.HTTPError as exc:
+            return {
+                **base,
+                "reachable": False,
+                "detail": f"Probe failed: {type(exc).__name__}.",
+            }
+
+        if response.status_code >= 400:
+            return {
+                **base,
+                "reachable": False,
+                "status": response.status_code,
+                "detail": f"Gateway rejected the probe with {response.status_code}.",
+            }
+
+        models: list[str] = []
+        try:
+            payload = response.json()
+            entries = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(entries, list):
+                models = [
+                    str(item.get("id"))
+                    for item in entries[:20]
+                    if isinstance(item, dict) and item.get("id")
+                ]
+        except ValueError:
+            models = []
+
+        return {
+            **base,
+            "reachable": True,
+            "status": response.status_code,
+            "models": models,
+            "detail": "The gateway answered a models request.",
+        }
+
     async def plan(self, *, technologies: list[str], file_count: int, has_lockfiles: bool) -> Plan:
         """Ask for a plan; any failure yields the deterministic plan, marked as such."""
         available = availability()

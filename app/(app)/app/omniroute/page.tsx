@@ -17,6 +17,17 @@ type Capabilities = {
   limits?: Record<string, number>;
 };
 
+type GatewayHealth = {
+  configured: boolean;
+  reachable: boolean | null;
+  base_url_set?: boolean;
+  api_key_set?: boolean;
+  model?: string;
+  models?: string[];
+  status?: number;
+  detail?: string;
+};
+
 async function probe<T>(path: string): Promise<{ data: T | null; error: string | null }> {
   const origin = (
     process.env.BACKEND_PUBLIC_URL ??
@@ -40,12 +51,14 @@ async function probe<T>(path: string): Promise<{ data: T | null; error: string |
 }
 
 export default async function OmniRoutePage() {
-  const [health, capabilities] = await Promise.all([
+  const [health, capabilities, gateway] = await Promise.all([
     probe<Health>("/health"),
     probe<Capabilities>("/v1/capabilities"),
+    probe<GatewayHealth>("/v1/integrations/omniroute"),
   ]);
 
   const aiConfigured = health.data?.omniroute === true;
+  const reachable = gateway.data?.reachable ?? null;
 
   return (
     <div className="max-w-4xl">
@@ -71,10 +84,16 @@ export default async function OmniRoutePage() {
           </p>
         </div>
         <div className="panel p-4">
-          <p className="mono-sm text-ash">Gateway configured</p>
-          <p className="mt-2 text-[14px] text-fog">{aiConfigured ? "yes" : "no"}</p>
+          <p className="mono-sm text-ash">Gateway</p>
+          <p className="mt-2 text-[14px] text-fog">
+            {aiConfigured ? "configured" : "not configured"}
+            {" · "}
+            {reachable === null ? "not probed" : reachable ? "reachable" : "unreachable"}
+          </p>
           <p className="mt-1 font-mono text-[10px] text-ash">
-            Based on OMNIROUTE_BASE_URL / API key presence server-side.
+            {gateway.error ??
+              gateway.data?.detail ??
+              "Based on OMNIROUTE_BASE_URL / API key presence server-side."}
           </p>
         </div>
         <div className="panel p-4">
@@ -108,6 +127,22 @@ export default async function OmniRoutePage() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="panel mt-4 p-5">
+        <h2 className="mono mb-2 text-ash">Models</h2>
+        {gateway.data?.models && gateway.data.models.length > 0 ? (
+          <ul className="space-y-1 font-mono text-[11px] text-muted">
+            {gateway.data.models.map((model) => (
+              <li key={model}>· {model}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="font-mono text-[11px] leading-relaxed text-ash">
+            No model list was returned. Without a configured, reachable gateway the
+            planner uses its deterministic fallback and the console says so.
+          </p>
         )}
       </section>
 

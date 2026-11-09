@@ -87,6 +87,6 @@ reported as "completeness cannot be claimed".
 
 ## Verification
 
-See `docs/VERIFICATION.md`. In short: 77 backend tests, `tsc` clean, production
+See `docs/VERIFICATION.md`. In short: 96 backend tests, `tsc` clean, production
 build clean, 14/14 live end-to-end checks, 10/10 tenant-isolation checks,
 8/8 new-endpoint checks against the real database.

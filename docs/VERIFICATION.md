@@ -11,7 +11,7 @@ Date: 2026-11-09.
 
 | Command | Result |
 |---|---|
-| `python -m pytest -q` (backend) | 77 passed |
+| `python -m pytest -q` (backend) | 96 passed |
 | `npx tsc --noEmit` | exit 0, 0 errors |
 | `npm run build` | exit 0, compiled successfully, 34 routes |
 
@@ -125,6 +125,12 @@ unreachable-target path writing nothing, and report snapshot authorization.
 
 ## Fixed during this pass
 
+- Scanner tools were reported missing when uvicorn was started from `backend/`:
+  `SCANNER_BIN=./backend/.tools` resolved against the working directory, so
+  `resolve_binary` looked in `backend/backend/.tools`. It now anchors a relative
+  path to the repository root. After the fix the corpus run reported gitleaks as
+  ran instead of skipped.
+
 - Source archives could land in `backend/backend/sources` when uvicorn was
   started from `backend/`. `storage_root()` now resolves a relative
   `SOURCE_STORAGE_DIR` against the repository root and the default is absolute,
@@ -139,15 +145,45 @@ unreachable-target path writing nothing, and report snapshot authorization.
   (1 critical, 1 high), recent assessment list.
 - Marketing `/` still renders unchanged after the route-group move.
 
+## Benchmark, GitHub import and gateway status
+
+`_local/e2e_capabilities.py` — **22/22 passed** against the live project.
+
+Benchmark: `POST /v1/workspaces/{id}/benchmarks` executed the real registry
+against corpus `v1` (three deliberately planted defects) and returned TP 3,
+FP 0, FN 0 with tools `native_secrets`, `static_checks`, `semgrep` and
+`gitleaks` all **ran**. The run row was persisted and read back through the
+list endpoint; the second account got 404 for both and saw no rows under RLS.
+`backend/tests/test_benchmark.py` additionally pins the scoring rules: two
+findings for one case count once, extras count as false positives, and a
+skipped tool is recorded as not measured rather than as a pass.
+
+GitHub: `GET /v1/integrations/github` reports `configured: false` on this
+deployment. `POST .../integrations/github/import` answers **503** naming the
+missing GitHub App and writes no source row. The client itself is covered by
+`backend/tests/test_github_integration.py` (9 tests) with a fake transport:
+RS256 app JWT shape, installation lookup, installation token, zipball download,
+404 for a missing installation, 413 above the archive limit, webhook HMAC
+verification, and the service path that stores a `github` source and queues a
+scan. **No live GitHub account was used, so the import is not operational.**
+
+OmniRoute: `GET /v1/integrations/omniroute` reports `configured: false` and
+`reachable: null` — it does not claim health it did not observe. The probe
+paths (model listing, 401, transport failure) are pinned with a fake transport
+in `backend/tests/test_omniroute_health.py`. **No real gateway was contacted.**
+
 ## Not verified
 
-- **OmniRoute**: not installed, no endpoint or key. The planner path is
-  exercised only through its deterministic fallback; the HTTP client is
-  implemented but has never spoken to a real gateway.
-- **GitHub App**: no credentials, so no repository import was executed. No
-  GitHub code exists beyond configuration placeholders.
+- **OmniRoute**: no endpoint or key, so only the deterministic fallback planner
+  has ever produced a plan. The client and health probe are implemented and
+  unit-tested, but neither has spoken to a real gateway.
+- **GitHub App**: no credentials exist for this deployment, so no repository
+  import has ever run against GitHub. The client, endpoints and refusal path are
+  implemented and unit-tested; treat them as unproven until a real installation
+  is configured.
 - **Trivy, ZAP, Checkov, Playwright**: not installed. They are not in the
-  registry and no report claims them.
+  registry and no report claims them. Only Semgrep, Gitleaks and OSV-Scanner
+  were executed.
 - **OSV depth**: the live run had no lockfile in the archive, so dependency
   coverage was effectively nil; "0 matches" there does not mean "no vulnerable
   dependencies". `run_osv` now refuses to report a clean result when no

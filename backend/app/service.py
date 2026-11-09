@@ -324,6 +324,151 @@ class ScanService:
             "source": source,
         }
 
+    async def import_github_repository(
+        self,
+        principal: Principal,
+        *,
+        workspace_id: str,
+        project_id: str,
+        owner: str,
+        repo: str,
+        ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Import a repository archive through the read-only GitHub App.
+
+        Refuses with 503 until the app is actually configured; nothing is
+        simulated when credentials are absent.
+        """
+        role = await self._role(principal, workspace_id)
+        require_role(role, WRITE_ROLES)
+
+        project = await self._repo.get_project(project_id)
+        if not project or project.get("workspace_id") != workspace_id:
+            raise HTTPException(404, "Project was not found in this workspace.")
+
+        from app.integrations.github import GitHubApp, GitHubError
+
+        app = GitHubApp.from_settings()
+        if not app.configured:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "The GitHub App is not configured on this deployment, so no repository can be imported.",
+            )
+
+        try:
+            data = await app.download_zipball(owner, repo, ref)
+        except GitHubError as exc:
+            raise HTTPException(exc.status_code, exc.message) from exc
+
+        info = inspect_zip(data)
+        label = f"{owner}/{repo}" + (f"@{ref}" if ref else "")
+        path = store_source(workspace_id, project_id, f"{owner}-{repo}.zip", data)
+
+        source = await self._repo.create_source(
+            {
+                "workspace_id": workspace_id,
+                "project_id": project_id,
+                "kind": "github",
+                "label": label[:120],
+                "storage_path": path,
+                "sha256": sha256(data),
+                "size_bytes": len(data),
+                "file_count": info["file_count"],
+                "created_by": principal.id,
+            }
+        )
+
+        scan = await self._repo.create_scan(
+            {
+                "workspace_id": workspace_id,
+                "project_id": project_id,
+                "source_id": source["id"],
+                "user_id": principal.id,
+                "trigger": "manual",
+                "status": "queued",
+                "findings_total": 0,
+            },
+            JOB_KINDS,
+        )
+
+        await self._repo.audit(
+            {
+                "workspace_id": workspace_id,
+                "actor_id": principal.id,
+                "action": "github.repository.imported",
+                "entity_type": "project_source",
+                "entity_id": source["id"],
+                "metadata": {
+                    "repository": label,
+                    "bytes": len(data),
+                    "files": info["file_count"],
+                    "scan_id": scan["id"],
+                },
+            }
+        )
+
+        return {"source": source, "scan": scan}
+
+    async def run_benchmark(
+        self,
+        principal: Principal,
+        *,
+        workspace_id: str,
+        corpus_version: str = "v1",
+        kinds: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Execute the corpus with the real registry and store the counts."""
+        role = await self._role(principal, workspace_id)
+        require_role(role, WRITE_ROLES)
+
+        from app.benchmark import corpus_versions, run_corpus
+
+        if corpus_version not in corpus_versions():
+            raise HTTPException(422, f"Unknown corpus version: {corpus_version}")
+
+        if kinds:
+            allowed = set(self.capabilities()["scanners"])
+            unknown = [kind for kind in kinds if kind not in allowed]
+            if unknown:
+                raise HTTPException(422, f"Unknown scanner kind: {', '.join(unknown)}")
+
+        result = await asyncio.to_thread(run_corpus, corpus_version, kinds or None)
+        row = await self._repo.create_benchmark(result.to_row(workspace_id))
+
+        await self._repo.audit(
+            {
+                "workspace_id": workspace_id,
+                "actor_id": principal.id,
+                "action": "benchmark.completed",
+                "entity_type": "benchmark_run",
+                "entity_id": row["id"],
+                "metadata": {
+                    "corpus_version": corpus_version,
+                    "recall": result.as_dict()["recall"],
+                    "false_positives": result.false_positives,
+                },
+            }
+        )
+        return {"run": row, "result": result.as_dict()}
+
+    async def list_benchmarks(
+        self, principal: Principal, *, workspace_id: str, limit: int = 50
+    ) -> dict[str, Any]:
+        role = await self._role(principal, workspace_id)
+        require_member(role)
+
+        db = SupabaseRest(principal.token)  # RLS scopes the rows
+        rows = await db.select(
+            "benchmark_runs",
+            params={
+                "workspace_id": f"eq.{workspace_id}",
+                "select": "*",
+                "order": "created_at.desc",
+                "limit": str(max(1, min(limit, 200))),
+            },
+        )
+        return {"runs": rows}
+
     async def create_report(
         self,
         principal: Principal,

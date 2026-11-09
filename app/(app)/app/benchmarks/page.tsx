@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { RunBenchmarkButton } from "@/components/app/RunBenchmarkButton";
 import { EmptyState, PageHeader, Pill, SetupNotice } from "@/components/app/ui";
 import { requireSession } from "@/lib/data/context";
 
@@ -37,9 +38,12 @@ export default async function BenchmarksPage() {
         title="Detection quality on synthetic fixtures"
         description="Scores are only meaningful with a stated corpus version and sample size. No number on this page is estimated."
         actions={
-          <Link href="/app/findings" className="btn btn-outline h-9 px-3">
-            Real findings
-          </Link>
+          <>
+            <RunBenchmarkButton workspaceId={workspace.id} />
+            <Link href="/app/findings" className="btn btn-outline h-9 px-3">
+              Real findings
+            </Link>
+          </>
         }
       />
 
@@ -48,7 +52,7 @@ export default async function BenchmarksPage() {
       ) : runs.length === 0 ? (
         <EmptyState
           title="No benchmark has been recorded"
-          body="The corpus is versioned in the repository. A run appears here only after the benchmark command executed the scanners against it and stored the counts."
+          body="Run the corpus to score the scanners installed on this worker. The run is only stored after the scanners actually executed against the fixture tree."
         />
       ) : (
         <div className="panel overflow-hidden">

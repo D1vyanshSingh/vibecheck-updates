@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AssessmentSourceForm } from "@/components/app/AssessmentSourceForm";
+import { GitHubImportForm } from "@/components/app/GitHubImportForm";
 import { UrlAssessmentForm } from "@/components/app/UrlAssessmentForm";
 import {
   EmptyState,
@@ -92,6 +93,10 @@ export default async function ProjectDetailPage({
                 workspaceId={workspace.id}
                 projectId={project.id}
                 defaultUrl={project.website_url}
+              />
+              <GitHubImportForm
+                workspaceId={workspace.id}
+                projectId={project.id}
               />
             </>
           ) : (

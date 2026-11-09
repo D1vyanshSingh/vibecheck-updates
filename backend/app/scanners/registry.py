@@ -38,12 +38,26 @@ class ToolSpec:
         return resolve_binary(self.binary) is not None
 
 
+def _bin_dir() -> Path:
+    """Scanner bin directory, with a relative path anchored to the repo root.
+
+    Resolving against the process working directory made `SCANNER_BIN=./backend/.tools`
+    miss when uvicorn was started from `backend/`, so installed tools were
+    reported as absent.
+    """
+    from app.storage import REPO_ROOT
+
+    configured = Path(settings.scanner_bin)
+    return configured if configured.is_absolute() else (REPO_ROOT / configured).resolve()
+
+
 def resolve_binary(name: str) -> str | None:
     """Resolve a tool inside the configured scanner bin directory first."""
-    local = Path(settings.scanner_bin) / f"{name}.exe"
+    directory = _bin_dir()
+    local = directory / f"{name}.exe"
     if local.is_file():
         return str(local)
-    local_no_ext = Path(settings.scanner_bin) / name
+    local_no_ext = directory / name
     if local_no_ext.is_file():
         return str(local_no_ext)
     return shutil.which(name)
